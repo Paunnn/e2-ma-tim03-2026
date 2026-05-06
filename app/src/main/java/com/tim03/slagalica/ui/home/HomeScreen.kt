@@ -24,7 +24,10 @@ import com.tim03.slagalica.ui.theme.*
 @Composable
 fun HomeScreen(
     onKorakPoKorakClick: () -> Unit,
-    onMojBrojClick: () -> Unit
+    onMojBrojClick: () -> Unit,
+    onKoZnaZnaClick: () -> Unit = {},
+    onSpojniceClick: () -> Unit = {},
+    onProfileClick: () -> Unit = {}
 ) {
     Scaffold(
         containerColor = Navy,
@@ -32,7 +35,7 @@ fun HomeScreen(
             TopBar()
         },
         bottomBar = {
-            BottomNavBar()
+            BottomNavBar(onProfileClick = onProfileClick)
         }
     ) { padding ->
         Column(
@@ -86,18 +89,18 @@ fun HomeScreen(
                     icon = Icons.Default.Quiz,
                     maxPoints = "50 bod.",
                     duration = "25s",
-                    available = false,
+                    available = true,
                     modifier = Modifier.weight(1f),
-                    onClick = {}
+                    onClick = onKoZnaZnaClick
                 )
                 GameCard(
                     title = "Spojnice",
                     icon = Icons.Default.Link,
                     maxPoints = "20 bod.",
                     duration = "2×30s",
-                    available = false,
+                    available = true,
                     modifier = Modifier.weight(1f),
-                    onClick = {}
+                    onClick = onSpojniceClick
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -290,7 +293,7 @@ private fun GameCard(
 }
 
 @Composable
-private fun BottomNavBar() {
+private fun BottomNavBar(onProfileClick: () -> Unit = {}) {
     NavigationBar(containerColor = NavyLight) {
         NavigationBarItem(
             selected = true,
@@ -307,7 +310,7 @@ private fun BottomNavBar() {
         )
         NavigationBarItem(
             selected = false,
-            onClick = {},
+            onClick = onProfileClick,
             icon = { Icon(Icons.Default.Person, null) },
             label = { Text("Profil") },
             colors = NavigationBarItemDefaults.colors(

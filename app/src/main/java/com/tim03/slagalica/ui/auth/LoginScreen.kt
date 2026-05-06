@@ -53,7 +53,6 @@ fun LoginScreen(
                 .padding(top = 80.dp, bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Logo
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = PrimaryBlue,
@@ -86,7 +85,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            // Email / username field
             OutlinedTextField(
                 value = identifier,
                 onValueChange = { identifier = it },
@@ -110,7 +108,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Password field
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },

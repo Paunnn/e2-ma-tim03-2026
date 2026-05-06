@@ -7,8 +7,11 @@ import androidx.navigation.compose.composable
 import com.tim03.slagalica.ui.auth.LoginScreen
 import com.tim03.slagalica.ui.auth.RegisterScreen
 import com.tim03.slagalica.ui.games.KorakPoKorakScreen
+import com.tim03.slagalica.ui.games.KoZnaZnaScreen
 import com.tim03.slagalica.ui.games.MojBrojScreen
+import com.tim03.slagalica.ui.games.SpojniceScreen
 import com.tim03.slagalica.ui.home.HomeScreen
+import com.tim03.slagalica.ui.profile.ProfileScreen
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
@@ -18,38 +21,59 @@ fun AppNavigation(navController: NavHostController) {
     ) {
         composable(Screen.Login.route) {
             LoginScreen(
-                onLoginClick = { navController.navigate(Screen.Home.route) {
-                    popUpTo(Screen.Login.route) { inclusive = true }
-                }},
+                onLoginClick = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                },
                 onRegisterClick = { navController.navigate(Screen.Register.route) },
-                onGuestClick = { navController.navigate(Screen.Home.route) {
-                    popUpTo(Screen.Login.route) { inclusive = true }
-                }}
+                onGuestClick = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                }
             )
         }
         composable(Screen.Register.route) {
             RegisterScreen(
-                onRegisterSuccess = { navController.navigate(Screen.Login.route) {
-                    popUpTo(Screen.Register.route) { inclusive = true }
-                }},
+                onRegisterSuccess = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(Screen.Register.route) { inclusive = true }
+                    }
+                },
                 onBackClick = { navController.popBackStack() }
             )
         }
         composable(Screen.Home.route) {
             HomeScreen(
                 onKorakPoKorakClick = { navController.navigate(Screen.KorakPoKorak.route) },
-                onMojBrojClick = { navController.navigate(Screen.MojBroj.route) }
+                onMojBrojClick = { navController.navigate(Screen.MojBroj.route) },
+                onKoZnaZnaClick = { navController.navigate(Screen.KoZnaZna.route) },
+                onSpojniceClick = { navController.navigate(Screen.Spojnice.route) },
+                onProfileClick = { navController.navigate(Screen.Profile.route) }
+            )
+        }
+        composable(Screen.Profile.route) {
+            ProfileScreen(
+                onNavigateHome = { navController.popBackStack() },
+                onLogout = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
             )
         }
         composable(Screen.KorakPoKorak.route) {
-            KorakPoKorakScreen(
-                onExitClick = { navController.popBackStack() }
-            )
+            KorakPoKorakScreen(onExitClick = { navController.popBackStack() })
         }
         composable(Screen.MojBroj.route) {
-            MojBrojScreen(
-                onExitClick = { navController.popBackStack() }
-            )
+            MojBrojScreen(onExitClick = { navController.popBackStack() })
+        }
+        composable(Screen.KoZnaZna.route) {
+            KoZnaZnaScreen(onExitClick = { navController.popBackStack() })
+        }
+        composable(Screen.Spojnice.route) {
+            SpojniceScreen(onExitClick = { navController.popBackStack() })
         }
     }
 }

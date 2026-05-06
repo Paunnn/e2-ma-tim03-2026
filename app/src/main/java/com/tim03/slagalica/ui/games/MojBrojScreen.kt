@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tim03.slagalica.ui.theme.*
+import kotlinx.coroutines.delay
 
 private val mockNumbers = listOf(3, 7, 25, 4, 10, 100)
 private const val MOCK_TARGET = 321
@@ -33,9 +34,37 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
     var expression by remember { mutableStateOf("") }
     var currentRound by remember { mutableStateOf(1) }
     var myScore by remember { mutableStateOf(0) }
-    var opponentScore by remember { mutableStateOf(10) }
+    var opponentScore by remember { mutableStateOf(0) }
     var timeLeft by remember { mutableStateOf(60) }
     var usedNumberIndices by remember { mutableStateOf(setOf<Int>()) }
+    var gameOver by remember { mutableStateOf(false) }
+    var roundSubmitted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentRound, gameOver) {
+        if (gameOver) return@LaunchedEffect
+        timeLeft = 60
+        roundSubmitted = false
+        while (timeLeft > 0 && !gameOver && !roundSubmitted) {
+            delay(1000L)
+            timeLeft--
+            if (timeLeft == 55 && !numbersRevealed) {
+                targetRevealed = true
+                numbersRevealed = true
+            }
+        }
+        if (!gameOver) {
+            if (currentRound < 2) {
+                currentRound++
+                expression = ""
+                usedNumberIndices = emptySet()
+                targetRevealed = false
+                numbersRevealed = false
+                roundSubmitted = false
+            } else {
+                gameOver = true
+            }
+        }
+    }
 
     val timerColor = when {
         timeLeft > 30 -> TimerGreen
@@ -96,7 +125,13 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                     .fillMaxSize()
                     .padding(padding)
             ) {
-                // Timer
+                if (gameOver) {
+                    GameOverContent(
+                        myScore = myScore,
+                        opponentScore = opponentScore,
+                        onFinish = onExitClick
+                    )
+                } else {
                 Column(modifier = Modifier.background(NavyLight)) {
                     LinearProgressIndicator(
                         progress = timeLeft.toFloat() / 60f,
@@ -115,7 +150,6 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                     }
                 }
 
-                // Round
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -131,7 +165,6 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                     }
                 }
 
-                // Scores
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -151,7 +184,6 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Target number card
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -206,7 +238,6 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                         }
                     }
 
-                    // Numbers grid
                     AnimatedVisibility(
                         visible = numbersRevealed,
                         enter = fadeIn() + expandVertically()
@@ -235,13 +266,11 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                         }
                     }
 
-                    // Expression builder
                     AnimatedVisibility(
                         visible = numbersRevealed,
                         enter = fadeIn() + expandVertically()
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Expression display
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
@@ -269,7 +298,6 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                                 }
                             }
 
-                            // Operators
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -327,16 +355,20 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                     }
                 }
 
-                // Submit button
                 Surface(color = NavyLight, shadowElevation = 8.dp) {
                     Button(
-                        onClick = {},
+                        onClick = {
+                            if (expressionResult == MOCK_TARGET) {
+                                myScore += 10
+                            }
+                            roundSubmitted = true
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(12.dp)
                             .navigationBarsPadding()
                             .height(52.dp),
-                        enabled = numbersRevealed && expression.isNotBlank(),
+                        enabled = numbersRevealed && expression.isNotBlank() && !roundSubmitted,
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (expressionResult == MOCK_TARGET) SuccessGreen else PrimaryBlueBright
@@ -355,6 +387,7 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                             color = White
                         )
                     }
+                }
                 }
             }
         }

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tim03.slagalica.ui.theme.*
+import kotlinx.coroutines.delay
 
 private val mockSteps = listOf(
     "Osnivač kompanije Apple i Pixar",
@@ -39,12 +40,44 @@ private val mockSteps = listOf(
 @Composable
 fun KorakPoKorakScreen(onExitClick: () -> Unit) {
     var answer by remember { mutableStateOf("") }
-    var revealedSteps by remember { mutableStateOf(2) }
+    var revealedSteps by remember { mutableStateOf(1) }
     var currentRound by remember { mutableStateOf(1) }
     var myScore by remember { mutableStateOf(0) }
-    var opponentScore by remember { mutableStateOf(12) }
-    var timeLeft by remember { mutableStateOf(50) }
+    var opponentScore by remember { mutableStateOf(0) }
+    var timeLeft by remember { mutableStateOf(70) }
     var isMyTurn by remember { mutableStateOf(true) }
+    var gameOver by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentRound, isMyTurn, gameOver) {
+        if (gameOver) return@LaunchedEffect
+        val totalTime = if (isMyTurn) 70 else 10
+        timeLeft = totalTime
+        while (timeLeft > 0 && !gameOver) {
+            delay(1000L)
+            timeLeft--
+            if (isMyTurn) {
+                val elapsed = totalTime - timeLeft
+                val expected = (elapsed / 10) + 1
+                if (expected > revealedSteps && revealedSteps < mockSteps.size) {
+                    revealedSteps = expected.coerceAtMost(mockSteps.size)
+                }
+            }
+        }
+        if (!gameOver) {
+            if (isMyTurn) {
+                isMyTurn = false
+            } else {
+                if (currentRound < 2) {
+                    currentRound++
+                    isMyTurn = true
+                    revealedSteps = 1
+                    answer = ""
+                } else {
+                    gameOver = true
+                }
+            }
+        }
+    }
 
     val timerColor = when {
         timeLeft > 30 -> TimerGreen
@@ -96,10 +129,15 @@ fun KorakPoKorakScreen(onExitClick: () -> Unit) {
                     .fillMaxSize()
                     .padding(padding)
             ) {
-                // Timer bar
-                TimerSection(timeLeft = timeLeft, totalTime = 70, timerColor = timerColor)
+                if (gameOver) {
+                    GameOverContent(
+                        myScore = myScore,
+                        opponentScore = opponentScore,
+                        onFinish = onExitClick
+                    )
+                } else {
+                TimerSection(timeLeft = timeLeft, totalTime = if (isMyTurn) 70 else 10, timerColor = timerColor)
 
-                // Round indicator
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -127,17 +165,14 @@ fun KorakPoKorakScreen(onExitClick: () -> Unit) {
                     }
                 }
 
-                // Player scores
                 PlayerScoreRow(myScore = myScore, opponentScore = opponentScore)
 
-                // Game content
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                         .padding(16.dp)
                 ) {
-                    // Target concept
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -168,7 +203,6 @@ fun KorakPoKorakScreen(onExitClick: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Steps list
                     mockSteps.forEachIndexed { index, clue ->
                         val isRevealed = index < revealedSteps
                         val isCurrent = index == revealedSteps - 1 && isRevealed
@@ -189,7 +223,6 @@ fun KorakPoKorakScreen(onExitClick: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Bonus round indicator
                     if (!isMyTurn) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -214,13 +247,29 @@ fun KorakPoKorakScreen(onExitClick: () -> Unit) {
                     }
                 }
 
-                // Answer input
                 AnswerSection(
                     answer = answer,
                     onAnswerChange = { answer = it },
-                    onSubmit = {},
-                    enabled = isMyTurn
+                    onSubmit = {
+                        val pointsEarned = (20 - (revealedSteps - 1) * 2).coerceAtLeast(0)
+                        if (isMyTurn) {
+                            myScore += pointsEarned
+                            isMyTurn = false
+                        } else {
+                            myScore += 5
+                            if (currentRound < 2) {
+                                currentRound++
+                                isMyTurn = true
+                                revealedSteps = 1
+                            } else {
+                                gameOver = true
+                            }
+                        }
+                        answer = ""
+                    },
+                    enabled = isMyTurn || (!isMyTurn && timeLeft > 0)
                 )
+                }
             }
         }
     }

@@ -4,7 +4,7 @@
             "outputFile": "com.tim03.slagalica.app-mergeDebugResources-48:/values-v21/values-v21.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\stefa\\.gradle\\caches\\8.14\\transforms\\d4476a2a2a40e88e69bd643956b3ad90\\transformed\\core-1.13.1\\res\\values-v21\\values-v21.xml",
+                    "source": "C:\\Users\\PC\\.gradle\\caches\\8.14\\transforms\\d4476a2a2a40e88e69bd643956b3ad90\\transformed\\core-1.13.1\\res\\values-v21\\values-v21.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,13",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4",
