@@ -6,11 +6,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.tim03.slagalica.ui.auth.LoginScreen
 import com.tim03.slagalica.ui.auth.RegisterScreen
+import com.tim03.slagalica.ui.games.AsocijacijeScreen
 import com.tim03.slagalica.ui.games.KorakPoKorakScreen
 import com.tim03.slagalica.ui.games.KoZnaZnaScreen
 import com.tim03.slagalica.ui.games.MojBrojScreen
+import com.tim03.slagalica.ui.games.SkockoScreen
 import com.tim03.slagalica.ui.games.SpojniceScreen
 import com.tim03.slagalica.ui.home.HomeScreen
+import com.tim03.slagalica.ui.notifications.NotificationsScreen
 import com.tim03.slagalica.ui.profile.ProfileScreen
 
 @Composable
@@ -50,7 +53,10 @@ fun AppNavigation(navController: NavHostController) {
                 onMojBrojClick = { navController.navigate(Screen.MojBroj.route) },
                 onKoZnaZnaClick = { navController.navigate(Screen.KoZnaZna.route) },
                 onSpojniceClick = { navController.navigate(Screen.Spojnice.route) },
-                onProfileClick = { navController.navigate(Screen.Profile.route) }
+                onAsocijacijeClick = { navController.navigate(Screen.Asocijacije.route) },
+                onSkockoClick = { navController.navigate(Screen.Skocko.route) },
+                onProfileClick = { navController.navigate(Screen.Profile.route) },
+                onNotificationsClick = { navController.navigate(Screen.Notifications.route) }
             )
         }
         composable(Screen.Profile.route) {
@@ -63,6 +69,9 @@ fun AppNavigation(navController: NavHostController) {
                 }
             )
         }
+        composable(Screen.Notifications.route) {
+            NotificationsScreen(onBackClick = { navController.popBackStack() })
+        }
         composable(Screen.KorakPoKorak.route) {
             KorakPoKorakScreen(onExitClick = { navController.popBackStack() })
         }
@@ -74,6 +83,12 @@ fun AppNavigation(navController: NavHostController) {
         }
         composable(Screen.Spojnice.route) {
             SpojniceScreen(onExitClick = { navController.popBackStack() })
+        }
+        composable(Screen.Asocijacije.route) {
+            AsocijacijeScreen(onExitClick = { navController.popBackStack() })
+        }
+        composable(Screen.Skocko.route) {
+            SkockoScreen(onExitClick = { navController.popBackStack() })
         }
     }
 }

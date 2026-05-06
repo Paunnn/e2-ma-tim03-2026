@@ -39,6 +39,7 @@ fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .imePadding()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(Navy, NavyLight, NavyCard)

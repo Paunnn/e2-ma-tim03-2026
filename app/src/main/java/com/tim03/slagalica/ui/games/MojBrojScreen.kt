@@ -5,8 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -181,6 +183,7 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
+                        .verticalScroll(rememberScrollState())
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -398,7 +401,7 @@ fun MojBrojScreen(onExitClick: () -> Unit) {
 private fun NumberButton(number: Int, isUsed: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier = modifier
-            .aspectRatio(1f)
+            .height(52.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(if (isUsed) DarkGray else NavyCard)
             .border(1.5.dp, if (isUsed) DarkGray else PrimaryBlue.copy(alpha = 0.5f), RoundedCornerShape(10.dp))

@@ -329,15 +329,11 @@ fun PlayerChip(name: String, score: Int, isActive: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (!isActive) Spacer(modifier = Modifier.weight(1f))
-        Column(horizontalAlignment = if (isActive) Alignment.Start else Alignment.End) {
-            Text(name, color = if (isActive) PrimaryBlueLight else LightGray, style = MaterialTheme.typography.labelSmall)
-            Text(
-                "$score bod.",
-                color = if (isActive) White else LightGray,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleMedium
-            )
+        if (!isActive) {
+            Column(horizontalAlignment = Alignment.End) {
+                Text(name, color = LightGray, style = MaterialTheme.typography.labelSmall)
+                Text("$score bod.", color = LightGray, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            }
         }
         Box(
             modifier = Modifier
@@ -349,7 +345,12 @@ fun PlayerChip(name: String, score: Int, isActive: Boolean) {
         ) {
             Icon(Icons.Default.Person, null, tint = White, modifier = Modifier.size(20.dp))
         }
-        if (isActive) Spacer(modifier = Modifier.weight(1f))
+        if (isActive) {
+            Column(horizontalAlignment = Alignment.Start) {
+                Text(name, color = PrimaryBlueLight, style = MaterialTheme.typography.labelSmall)
+                Text("$score bod.", color = White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            }
+        }
     }
 }
 
