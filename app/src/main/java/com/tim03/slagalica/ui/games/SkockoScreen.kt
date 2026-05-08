@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import com.tim03.slagalica.ui.theme.*
 
 private data class SkockoSymbol(val label: String, val emoji: String, val color: Color)
@@ -54,6 +55,14 @@ fun SkockoScreen(onExitClick: () -> Unit) {
     var opponentScore by remember { mutableStateOf(15) }
     var timeLeft by remember { mutableStateOf(22) }
     var isMyTurn by remember { mutableStateOf(true) }
+
+    LaunchedEffect(currentRound, isMyTurn) {
+        timeLeft = 22
+        while (timeLeft > 0) {
+            delay(1000)
+            timeLeft--
+        }
+    }
 
     val timerColor = when {
         timeLeft > 20 -> TimerGreen

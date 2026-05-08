@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.tim03.slagalica.ui.theme.*
 import kotlinx.coroutines.delay
 
-private val mockNumbers = listOf(3, 7, 25, 4, 10, 100)
+private val mockNumbers = listOf(3, 7, 5, 4, 10, 100)
 private const val MOCK_TARGET = 321
 
 @OptIn(ExperimentalMaterial3Api::class)
