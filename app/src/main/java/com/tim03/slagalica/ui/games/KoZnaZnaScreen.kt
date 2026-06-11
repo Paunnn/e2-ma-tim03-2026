@@ -89,7 +89,6 @@ fun KoZnaZnaScreen(onExitClick: () -> Unit) {
             questionTimeLeft--
         }
         if (!gameOver && currentQuestionIndex !in answeredQuestions) {
-            // Time's up — skip question (no penalty per spec)
             if (currentQuestionIndex < mockQuestions.size - 1) {
                 currentQuestionIndex++
                 selectedAnswerIndex = null

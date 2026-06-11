@@ -36,7 +36,7 @@ private val mockRounds = listOf(
     SpojniceRound(
         criterion = "Povežite izvođača sa pesmom",
         leftItems = listOf("Zdravko Čolić", "Bijelo Dugme", "Riblja Čorba", "Oliver Dragojević", "Tose Proeski"),
-        rightItems = listOf("Kad bi bio bijelo dugme", "Kurvini sinovi", "Galeb i ja", "Ako me pitaš zašto", "Tvoja"),
+        rightItems = listOf("Kad bi bio bijelo dugme", "Ako ima Boga", "Galeb i ja", "Ako me pitaš zašto", "Tvoja"),
         correctMapping = mapOf(0 to 0, 1 to 1, 2 to 2, 3 to 3, 4 to 4)
     ),
     SpojniceRound(
@@ -92,7 +92,7 @@ fun SpojniceScreen(onExitClick: () -> Unit) {
     val connectedRight = connections.values.toSet()
     val wrongLeft = wrongConnections.keys
     val usedLeft = connectedLeft + wrongLeft
-    val usedRight = connectedRight  // wrong right items stay available
+    val usedRight = connectedRight
     val unconnectedCount = 5 - connections.size - wrongConnections.size
     val timerColor = when {
         timeLeft > 20 -> TimerGreen
@@ -294,7 +294,7 @@ fun SpojniceScreen(onExitClick: () -> Unit) {
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright)
                         ) {
                             val label = when {
-                                !showOpponentPhase && connections.size < 5 -> "PREDAJ — protivnik pokušava"
+                                !showOpponentPhase && connections.size < 5 -> "PREDAJ. Protivnik pokušava"
                                 showOpponentPhase || connections.size == 5 -> if (currentRound < mockRounds.size - 1) "SLEDEĆA RUNDA" else "ZAVRŠI"
                                 else -> "DALJE"
                             }
@@ -394,7 +394,7 @@ private fun SelectionHintCard(leftItem: String) {
         ) {
             Icon(Icons.Default.TouchApp, null, tint = Gold, modifier = Modifier.size(16.dp))
             Text(
-                "Odabrano: \"$leftItem\" — tapnite pojam sa desne strane",
+                "Odabrano: \"$leftItem\" , izaberite pojam sa desne strane",
                 color = Gold,
                 style = MaterialTheme.typography.bodySmall
             )

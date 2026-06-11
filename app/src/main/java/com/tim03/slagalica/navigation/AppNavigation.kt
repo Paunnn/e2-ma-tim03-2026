@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.tim03.slagalica.ui.auth.ChangePasswordScreen
 import com.tim03.slagalica.ui.auth.LoginScreen
 import com.tim03.slagalica.ui.auth.RegisterScreen
 import com.tim03.slagalica.ui.games.AsocijacijeScreen
@@ -18,13 +19,11 @@ import com.tim03.slagalica.ui.profile.ProfileScreen
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
-    NavHost(
-        navController = navController,
-        startDestination = Screen.Login.route
-    ) {
+    NavHost(navController = navController, startDestination = Screen.Login.route) {
+
         composable(Screen.Login.route) {
             LoginScreen(
-                onLoginClick = {
+                onLoginSuccess = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
@@ -37,6 +36,7 @@ fun AppNavigation(navController: NavHostController) {
                 }
             )
         }
+
         composable(Screen.Register.route) {
             RegisterScreen(
                 onRegisterSuccess = {
@@ -47,6 +47,7 @@ fun AppNavigation(navController: NavHostController) {
                 onBackClick = { navController.popBackStack() }
             )
         }
+
         composable(Screen.Home.route) {
             HomeScreen(
                 onKorakPoKorakClick = { navController.navigate(Screen.KorakPoKorak.route) },
@@ -59,6 +60,7 @@ fun AppNavigation(navController: NavHostController) {
                 onNotificationsClick = { navController.navigate(Screen.Notifications.route) }
             )
         }
+
         composable(Screen.Profile.route) {
             ProfileScreen(
                 onNavigateHome = { navController.popBackStack() },
@@ -66,27 +68,39 @@ fun AppNavigation(navController: NavHostController) {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
                     }
-                }
+                },
+                onChangePassword = { navController.navigate(Screen.ChangePassword.route) }
             )
         }
+
+        composable(Screen.ChangePassword.route) {
+            ChangePasswordScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Screen.Notifications.route) {
             NotificationsScreen(onBackClick = { navController.popBackStack() })
         }
+
         composable(Screen.KorakPoKorak.route) {
             KorakPoKorakScreen(onExitClick = { navController.popBackStack() })
         }
+
         composable(Screen.MojBroj.route) {
             MojBrojScreen(onExitClick = { navController.popBackStack() })
         }
+
         composable(Screen.KoZnaZna.route) {
             KoZnaZnaScreen(onExitClick = { navController.popBackStack() })
         }
+
         composable(Screen.Spojnice.route) {
             SpojniceScreen(onExitClick = { navController.popBackStack() })
         }
+
         composable(Screen.Asocijacije.route) {
             AsocijacijeScreen(onExitClick = { navController.popBackStack() })
         }
+
         composable(Screen.Skocko.route) {
             SkockoScreen(onExitClick = { navController.popBackStack() })
         }

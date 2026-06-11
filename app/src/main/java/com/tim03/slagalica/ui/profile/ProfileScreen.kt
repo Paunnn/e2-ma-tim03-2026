@@ -30,7 +30,8 @@ fun ProfileScreen(
     onNavigateRanking: () -> Unit = {},
     onNavigateFriends: () -> Unit = {},
     onNavigateChat: () -> Unit = {},
-    onLogout: () -> Unit = {}
+    onLogout: () -> Unit = {},
+    onChangePassword: () -> Unit = {}
 ) {
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showAvatarDialog by remember { mutableStateOf(false) }
@@ -99,6 +100,8 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(16.dp))
             StatisticsSection()
             Spacer(modifier = Modifier.height(16.dp))
+            ChangePasswordButton(onClick = onChangePassword)
+            Spacer(modifier = Modifier.height(8.dp))
             LogoutButton(onClick = { showLogoutDialog = true })
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -428,6 +431,22 @@ private fun LabeledProgressBar(label: String, value: Float, color: Color) {
             color = color,
             trackColor = DarkGray
         )
+    }
+}
+
+@Composable
+private fun ChangePasswordButton(onClick: () -> Unit) {
+    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+        OutlinedButton(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MediumGray)
+        ) {
+            Icon(Icons.Default.Lock, null, tint = LightGray, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("PROMENA LOZINKE", color = LightGray, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
