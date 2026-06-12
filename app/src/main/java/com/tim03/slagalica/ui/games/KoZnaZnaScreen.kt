@@ -127,34 +127,16 @@ fun KoZnaZnaScreen(onExitClick: () -> Unit) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            "KO ZNA ZNA",
-                            fontWeight = FontWeight.ExtraBold,
-                            color = White,
-                            letterSpacing = 1.sp,
-                            fontSize = 16.sp
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onExitClick) {
-                            Icon(Icons.Default.Close, null, tint = LightGray)
-                        }
-                    },
-                    actions = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(end = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.Token, null, tint = GoldLight, modifier = Modifier.size(16.dp))
-                            Text("5", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(16.dp))
-                            Text("142", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = NavyLight)
+                GameHud(
+                    gameName = "Ko zna zna",
+                    gameColor = GameKoZnaZna,
+                    gameIcon = "?",
+                    round = "${currentQuestionIndex + 1}/${mockQuestions.size} pit.",
+                    timeLeft = questionTimeLeft,
+                    totalTime = 5,
+                    myScore = myScore,
+                    oppScore = opponentScore,
+                    onExit = onExitClick
                 )
             }
         ) { padding ->
@@ -170,42 +152,6 @@ fun KoZnaZnaScreen(onExitClick: () -> Unit) {
                         onFinish = onExitClick
                     )
                 } else {
-                    TotalTimerBar(timeLeft = totalTimeLeft, totalTime = 25, timerColor = totalTimerColor)
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(NavyCard)
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Pitanje ${currentQuestionIndex + 1} / ${mockQuestions.size}",
-                            color = Gold,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        QuestionTimerChip(timeLeft = questionTimeLeft, timerColor = timerColor)
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(PrimaryBlue.copy(alpha = 0.3f), Navy, WarningOrange.copy(alpha = 0.15f))
-                                )
-                            )
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        PlayerChip(name = "Ti", score = myScore, isActive = true)
-                        Text("VS", color = MediumGray, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        PlayerChip(name = "Protivnik", score = opponentScore, isActive = false)
-                    }
-
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -220,7 +166,20 @@ fun KoZnaZnaScreen(onExitClick: () -> Unit) {
                         )
 
                         if (currentQuestion != null) {
-                            QuestionCard(question = currentQuestion.question)
+                            Text(
+                                "PITANJE ${currentQuestionIndex + 1}",
+                                color = MediumGray, fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                currentQuestion.question,
+                                color = White, fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp, lineHeight = 26.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp)
+                            )
 
                             Spacer(modifier = Modifier.height(4.dp))
 
@@ -238,6 +197,7 @@ fun KoZnaZnaScreen(onExitClick: () -> Unit) {
                                     label = ('A' + index).toString(),
                                     text = answer,
                                     state = answerState,
+                                    isMyChoice = isSelected && isAnswered,
                                     enabled = !isAnswered,
                                     onClick = {
                                         selectedAnswerIndex = index
@@ -252,6 +212,21 @@ fun KoZnaZnaScreen(onExitClick: () -> Unit) {
                                     }
                                 )
                             }
+                        }
+
+                        // Scoring hint (mono, centered, bottom)
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = NavyCard),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, LineSoft)
+                        ) {
+                            Text(
+                                "+10 za tačan odgovor · −5 za netačan · brži uzima poene",
+                                color = MediumGray, fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth().padding(8.dp, 6.dp)
+                            )
                         }
 
                         AnimatedVisibility(visible = showResult && currentQuestionIndex in answeredQuestions) {
@@ -296,6 +271,7 @@ private enum class AnswerState { IDLE, CORRECT, WRONG }
 
 @Composable
 private fun TotalTimerBar(timeLeft: Int, totalTime: Int, timerColor: Color) {
+    // unused but kept for reference
     Column(modifier = Modifier.background(NavyLight)) {
         LinearProgressIndicator(
             progress = timeLeft.toFloat() / totalTime.toFloat(),
@@ -395,63 +371,64 @@ private fun AnswerButton(
     label: String,
     text: String,
     state: AnswerState,
+    isMyChoice: Boolean = false,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    // Design: selected/correct = solid game color bg, dark text
     val bgColor = when (state) {
-        AnswerState.CORRECT -> SuccessGreen.copy(alpha = 0.2f)
-        AnswerState.WRONG -> ErrorRed.copy(alpha = 0.2f)
-        AnswerState.IDLE -> NavyCard
+        AnswerState.CORRECT -> GameKoZnaZna
+        AnswerState.WRONG   -> ErrorRed
+        AnswerState.IDLE    -> NavyCard
     }
+    val textColor = when (state) {
+        AnswerState.CORRECT -> Navy
+        AnswerState.WRONG   -> White
+        AnswerState.IDLE    -> White
+    }
+    val labelBg = when (state) {
+        AnswerState.CORRECT -> Navy
+        AnswerState.WRONG   -> Color(0xFF7A0020)
+        AnswerState.IDLE    -> NavyCardLight
+    }
+    val labelTextColor = when (state) {
+        AnswerState.CORRECT -> GameKoZnaZna
+        AnswerState.WRONG   -> White
+        AnswerState.IDLE    -> LightGray
+    }
+    val borderDp = if (state != AnswerState.IDLE) 2.dp else 1.5.dp
     val borderColor = when (state) {
-        AnswerState.CORRECT -> SuccessGreen
-        AnswerState.WRONG -> ErrorRed
-        AnswerState.IDLE -> MediumGray.copy(alpha = 0.4f)
-    }
-    val labelBgColor = when (state) {
-        AnswerState.CORRECT -> SuccessGreen
-        AnswerState.WRONG -> ErrorRed
-        AnswerState.IDLE -> PrimaryBlue
+        AnswerState.CORRECT -> GameKoZnaZna
+        AnswerState.WRONG   -> ErrorRed
+        AnswerState.IDLE    -> LineColor
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = bgColor),
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, borderColor)
+        border = androidx.compose.foundation.BorderStroke(borderDp, borderColor)
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(labelBgColor),
+                modifier = Modifier.size(26.dp).clip(RoundedCornerShape(6.dp)).background(labelBg),
                 contentAlignment = Alignment.Center
             ) {
-                Text(label, color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(label, color = labelTextColor, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
             }
-            Text(
-                text,
-                color = when (state) {
-                    AnswerState.CORRECT -> SuccessGreen
-                    AnswerState.WRONG -> ErrorRed
-                    AnswerState.IDLE -> White
-                },
-                fontWeight = FontWeight.Medium,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            if (state == AnswerState.CORRECT) {
-                Spacer(modifier = Modifier.weight(1f))
-                Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
-            } else if (state == AnswerState.WRONG) {
-                Spacer(modifier = Modifier.weight(1f))
-                Icon(Icons.Default.Cancel, null, tint = ErrorRed, modifier = Modifier.size(20.dp))
+            Text(text, color = textColor, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            if (isMyChoice) {
+                Text(
+                    "TVOJ ODGOVOR",
+                    color = if (state == AnswerState.CORRECT) Navy else White,
+                    fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp
+                )
             }
         }
     }

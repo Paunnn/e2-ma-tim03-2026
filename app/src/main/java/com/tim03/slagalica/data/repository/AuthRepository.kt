@@ -75,6 +75,10 @@ class AuthRepository {
         user.updatePassword(newPassword).await()
     }
 
+    suspend fun loginAsGuest(): Result<Unit> = runCatching {
+        auth.signInAnonymously().await()
+    }
+
     fun logout() = auth.signOut()
 
     fun currentUser(): FirebaseUser? = auth.currentUser

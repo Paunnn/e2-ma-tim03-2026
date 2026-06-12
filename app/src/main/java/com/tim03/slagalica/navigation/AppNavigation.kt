@@ -1,6 +1,9 @@
 package com.tim03.slagalica.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -16,9 +19,13 @@ import com.tim03.slagalica.ui.games.SpojniceScreen
 import com.tim03.slagalica.ui.home.HomeScreen
 import com.tim03.slagalica.ui.notifications.NotificationsScreen
 import com.tim03.slagalica.ui.profile.ProfileScreen
+import com.tim03.slagalica.viewmodel.NotificationsViewModel
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
+    val notifViewModel: NotificationsViewModel = viewModel()
+    val unreadCount by notifViewModel.unreadCount.collectAsState()
+
     NavHost(navController = navController, startDestination = Screen.Login.route) {
 
         composable(Screen.Login.route) {
@@ -57,7 +64,8 @@ fun AppNavigation(navController: NavHostController) {
                 onAsocijacijeClick = { navController.navigate(Screen.Asocijacije.route) },
                 onSkockoClick = { navController.navigate(Screen.Skocko.route) },
                 onProfileClick = { navController.navigate(Screen.Profile.route) },
-                onNotificationsClick = { navController.navigate(Screen.Notifications.route) }
+                onNotificationsClick = { navController.navigate(Screen.Notifications.route) },
+                unreadNotifCount = unreadCount
             )
         }
 

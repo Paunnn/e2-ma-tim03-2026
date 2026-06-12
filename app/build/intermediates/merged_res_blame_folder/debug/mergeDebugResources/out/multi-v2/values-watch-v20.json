@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.tim03.slagalica.app-mergeDebugResources-59:/values-watch-v20/values-watch-v20.xml",
+            "outputFile": "com.tim03.slagalica.app-mergeDebugResources-60:/values-watch-v20/values-watch-v20.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\PC\\.gradle\\caches\\8.14\\transforms\\2136da521a8564cd11b2e1d7ab558832\\transformed\\play-services-auth-20.7.0\\res\\values-watch-v20\\values.xml",
+                    "source": "C:\\Users\\stefa\\.gradle\\caches\\8.14\\transforms\\091acdf0c0a12857e8e14c81fe358eee\\transformed\\play-services-auth-20.7.0\\res\\values-watch-v20\\values.xml",
                     "from": {
                         "startLines": "4,5,6,7,8,9,10,11",
                         "startColumns": "0,0,0,0,0,0,0,0",

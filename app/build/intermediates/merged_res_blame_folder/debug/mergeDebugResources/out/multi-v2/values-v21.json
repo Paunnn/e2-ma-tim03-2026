@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.tim03.slagalica.app-mergeDebugResources-59:/values-v21/values-v21.xml",
+            "outputFile": "com.tim03.slagalica.app-mergeDebugResources-60:/values-v21/values-v21.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\PC\\.gradle\\caches\\8.14\\transforms\\75ce367217417f3b5b206de8677799b2\\transformed\\core-1.13.1\\res\\values-v21\\values-v21.xml",
+                    "source": "C:\\Users\\stefa\\.gradle\\caches\\8.14\\transforms\\c72ff3bf1c946c1a1b97b237c67eb0fc\\transformed\\core-1.13.1\\res\\values-v21\\values-v21.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,13",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4",
@@ -23,7 +23,7 @@
                     }
                 },
                 {
-                    "source": "C:\\Users\\PC\\.gradle\\caches\\8.14\\transforms\\7188203f85870eadbae185c90b7c9e17\\transformed\\credentials-play-services-auth-1.2.0-rc01\\res\\values-v21\\values-v21.xml",
+                    "source": "C:\\Users\\stefa\\.gradle\\caches\\8.14\\transforms\\328a8958f8d76b388b71fc16896b5c3c\\transformed\\credentials-play-services-auth-1.2.0-rc01\\res\\values-v21\\values-v21.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",

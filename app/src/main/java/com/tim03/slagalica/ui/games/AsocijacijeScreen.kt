@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -15,270 +14,433 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.ui.theme.*
-
-private data class Column(val clues: List<String>, val solution: String)
-
-private val mockColumns = listOf(
-    Column(listOf("Beograd", "Pariz", "London", "Berlin"), "Prestonica"),
-    Column(listOf("Fudbal", "Košarka", "Tenis", "Odbojka"), "Sport"),
-    Column(listOf("Jabuka", "Banana", "Grozđe", "Narandža"), "Voće"),
-    Column(listOf("Pas", "Mačka", "Zec", "Hrčak"), "Ljubimac")
-)
-private const val FINAL_SOLUTION = "KATEGORIJE"
+import com.tim03.slagalica.viewmodel.AsocijacijePhase
+import com.tim03.slagalica.viewmodel.AsocijacijeViewModel
 
 private val columnColors = listOf(
-    Color(0xFF1565C0),
-    Color(0xFF2E7D32),
-    Color(0xFF6A1B9A),
-    Color(0xFFE65100)
+    PrimaryBlueBright,
+    GameSpojnice,
+    GameAsocijacije,
+    GameMojBroj
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AsocijacijeScreen(onExitClick: () -> Unit) {
-    var revealed by remember { mutableStateOf(Array(4) { BooleanArray(4) { false } }) }
-    var columnSolved by remember { mutableStateOf(BooleanArray(4) { false }) }
-    var finalSolved by remember { mutableStateOf(false) }
-    var answer by remember { mutableStateOf("") }
-    var currentRound by remember { mutableStateOf(1) }
-    var myScore by remember { mutableStateOf(0) }
-    var opponentScore by remember { mutableStateOf(18) }
-    var timeLeft by remember { mutableStateOf(90) }
-    var isMyTurn by remember { mutableStateOf(true) }
-
-    LaunchedEffect(currentRound, isMyTurn) {
-        timeLeft = 90
-        while (timeLeft > 0) {
-            delay(1000)
-            timeLeft--
-        }
-    }
+fun AsocijacijeScreen(
+    onExitClick: () -> Unit,
+    viewModel: AsocijacijeViewModel = viewModel()
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var answerText by remember { mutableStateOf("") }
+    var guessMode by remember { mutableStateOf<GuessMode>(GuessMode.None) }
 
     val timerColor = when {
-        timeLeft > 60 -> TimerGreen
-        timeLeft > 30 -> TimerYellow
+        state.timeLeft > 80 -> TimerGreen
+        state.timeLeft > 40 -> TimerYellow
         else -> TimerRed
+    }
+
+    if (state.phase == AsocijacijePhase.LOADING) {
+        Box(modifier = Modifier.fillMaxSize().background(Navy), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = PrimaryBlueBright)
+        }
+        return
     }
 
     Scaffold(
         containerColor = Navy,
         topBar = {
-            TopAppBar(
-                title = { Text("ASOCIJACIJE", fontWeight = FontWeight.ExtraBold, color = White, letterSpacing = 1.sp, fontSize = 16.sp) },
-                navigationIcon = { IconButton(onClick = onExitClick) { Icon(Icons.Default.Close, null, tint = LightGray) } },
-                actions = {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Default.Token, null, tint = GoldLight, modifier = Modifier.size(16.dp))
-                        Text("5", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(16.dp))
-                        Text("0", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = NavyLight)
+            GameHud(
+                gameName = "Asocijacije",
+                gameColor = GameAsocijacije,
+                gameIcon = "✦",
+                round = "${state.currentRound}/2 runda",
+                timeLeft = state.timeLeft,
+                totalTime = 120,
+                myScore = state.myScore,
+                oppScore = state.opponentScore,
+                onExit = onExitClick
             )
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Column(modifier = Modifier.background(NavyLight)) {
-                LinearProgressIndicator(
-                    progress = timeLeft / 120f,
-                    modifier = Modifier.fillMaxWidth().height(6.dp),
-                    color = timerColor, trackColor = DarkGray
-                )
-                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Default.Timer, null, tint = timerColor, modifier = Modifier.size(16.dp))
-                        Text("$timeLeft s", color = timerColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                }
-            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().background(NavyCard).padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Runda $currentRound / 2", color = Gold, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                Surface(shape = RoundedCornerShape(8.dp), color = if (isMyTurn) PrimaryBlue else DarkGray) {
-                    Text(if (isMyTurn) "  Tvoj red  " else "  Čekaš  ", color = if (isMyTurn) White else LightGray,
-                        style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+            // Message banner
+            state.message?.let { msg ->
+                Surface(color = NavyCard) {
+                    Text(
+                        msg,
+                        color = Gold,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth().background(NavyLight).padding(horizontal = 16.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-            ) {
-                PlayerChip(name = "Ti", score = myScore, isActive = true)
-                Text("VS", color = MediumGray, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                PlayerChip(name = "Protivnik", score = opponentScore, isActive = false)
             }
 
             Column(
                 modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (0..3).forEach { col ->
-                        Text(
-                            text = "${('A' + col)}",
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Center,
-                            color = columnColors[col],
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
+                val question = state.currentQuestion
 
-                (0..3).forEach { row ->
+                if (question != null) {
+                    // Column headers
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         (0..3).forEach { col ->
-                            val isRevealed = revealed[col][row]
-                            val isSolved = columnSolved[col]
-                            ClueCell(
-                                text = if (isRevealed || isSolved) mockColumns[col].clues[row] else "?",
-                                isRevealed = isRevealed || isSolved,
+                            Text(
+                                text = "${('A' + col)}",
+                                modifier = Modifier.weight(1f),
+                                textAlign = TextAlign.Center,
+                                color = columnColors[col],
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+
+                    // Clue grid
+                    (0..3).forEach { row ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            (0..3).forEach { col ->
+                                val isRevealed = state.revealed[col][row]
+                                val isSolved = state.columnSolved[col]
+                                val clue = question.columns()[col].clues.getOrNull(row) ?: ""
+                                val canReveal = !isRevealed && !isSolved &&
+                                    state.isMyTurn &&
+                                    state.phase == AsocijacijePhase.MY_TURN &&
+                                    !state.hasRevealedThisTurn
+                                val cellLabel = "${'A' + col}${row + 1}"
+                                AsocijacijeClueCell(
+                                    text = if (isRevealed || isSolved) clue else cellLabel,
+                                    isRevealed = isRevealed || isSolved,
+                                    isClickable = canReveal,
+                                    color = columnColors[col],
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { if (canReveal) viewModel.revealField(col, row) }
+                                )
+                            }
+                        }
+                    }
+
+                    // Column solution cells
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        (0..3).forEach { col ->
+                            val isSolved = state.columnSolved[col]
+                            AsocijacijeSolutionCell(
+                                text = if (isSolved) question.columns()[col].solution else "Reši ${('A' + col)}",
+                                isSolved = isSolved,
                                 color = columnColors[col],
                                 modifier = Modifier.weight(1f),
                                 onClick = {
-                                    if (!isRevealed && !isSolved && isMyTurn) {
-                                        val newRevealed = Array(4) { c -> BooleanArray(4) { r -> revealed[c][r] } }
-                                        newRevealed[col][row] = true
-                                        revealed = newRevealed
+                                    if (!isSolved && state.isMyTurn && state.phase == AsocijacijePhase.MY_TURN) {
+                                        guessMode = GuessMode.Column(col)
+                                        answerText = ""
                                     }
                                 }
                             )
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (0..3).forEach { col ->
-                        SolutionCell(
-                            text = if (columnSolved[col]) mockColumns[col].solution else "Rešenje ${('A' + col)}",
-                            isSolved = columnSolved[col],
-                            color = columnColors[col],
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                if (!columnSolved[col] && isMyTurn) {
-                                    val newSolved = columnSolved.copyOf()
-                                    newSolved[col] = true
-                                    columnSolved = newSolved
-                                }
+                    // Final solution card
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (state.finalSolved)
+                                    Brush.linearGradient(listOf(GameAsocijacije, PrimaryBlueBright))
+                                else
+                                    Brush.linearGradient(listOf(NavyCard, NavyCard))
+                            )
+                            .border(
+                                if (state.finalSolved) 2.dp else 1.dp,
+                                if (state.finalSolved) GameAsocijacije else MediumGray,
+                                RoundedCornerShape(14.dp)
+                            )
+                            .clickable(enabled = !state.finalSolved && state.isMyTurn && state.phase == AsocijacijePhase.MY_TURN) {
+                                guessMode = GuessMode.Final
+                                answerText = ""
+                            }
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "KONAČNO REŠENJE",
+                                color = if (state.finalSolved) Navy else MediumGray,
+                                fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (state.finalSolved) question.finalSolution else "???",
+                                color = if (state.finalSolved) Navy else LightGray,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = if (state.finalSolved) 22.sp else 18.sp
+                            )
+                            if (!state.finalSolved && state.isMyTurn && state.phase == AsocijacijePhase.MY_TURN) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Tapni za pogađanje", color = MediumGray, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+
+                    if (state.phase == AsocijacijePhase.GAME_OVER) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        AsocijacijeResultCard(state.myScore, state.opponentScore)
+                    }
+                }
+            }
+
+            // Input area
+            if (state.phase == AsocijacijePhase.MY_TURN && state.isMyTurn) {
+                when (val mode = guessMode) {
+                    is GuessMode.Column -> {
+                        GuessInputBar(
+                            hint = "Rešenje kolone ${('A' + mode.col)}...",
+                            value = answerText,
+                            onValueChange = { answerText = it },
+                            onSubmit = {
+                                viewModel.guessColumn(mode.col, answerText)
+                                answerText = ""
+                                guessMode = GuessMode.None
+                            },
+                            onCancel = {
+                                guessMode = GuessMode.None
+                                answerText = ""
                             }
                         )
                     }
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = !finalSolved && isMyTurn) {
-                        if (!finalSolved) finalSolved = true
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (finalSolved) Gold.copy(alpha = 0.2f) else NavyCard
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(if (finalSolved) 2.dp else 1.dp, if (finalSolved) Gold else MediumGray)
-                ) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Konačno rešenje", color = if (finalSolved) Gold else LightGray, style = MaterialTheme.typography.labelSmall)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (finalSolved) FINAL_SOLUTION else "???",
-                                color = if (finalSolved) Gold else MediumGray,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = if (finalSolved) 22.sp else 18.sp
-                            )
+                    is GuessMode.Final -> {
+                        GuessInputBar(
+                            hint = "Konačno rešenje...",
+                            value = answerText,
+                            onValueChange = { answerText = it },
+                            onSubmit = {
+                                viewModel.guessFinal(answerText)
+                                answerText = ""
+                                guessMode = GuessMode.None
+                            },
+                            onCancel = {
+                                guessMode = GuessMode.None
+                                answerText = ""
+                            }
+                        )
+                    }
+                    GuessMode.None -> {
+                        Surface(color = NavyLight, shadowElevation = 4.dp) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp)
+                                    .navigationBarsPadding(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = if (state.hasRevealedThisTurn)
+                                        "Pogodi rešenje kolone ili konačno rešenje, ili preskoči."
+                                    else
+                                        "Tapni polje da otvoriš, ili tapni rešenje kolone/konačno.",
+                                    color = MediumGray,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                // "Preskoči" shown only after player has revealed a field this turn
+                                if (state.hasRevealedThisTurn) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            guessMode = GuessMode.None
+                                            answerText = ""
+                                            viewModel.passTurn()
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp, WarningOrange.copy(alpha = 0.6f)
+                                        )
+                                    ) {
+                                        Text("PRESKOČI", color = WarningOrange, fontSize = 11.sp)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
 
-            Surface(color = NavyLight, shadowElevation = 8.dp) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = answer,
-                        onValueChange = { answer = it },
-                        placeholder = { Text("Unesite rešenje...", color = MediumGray) },
-                        enabled = isMyTurn,
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryBlueBright,
-                            unfocusedBorderColor = MediumGray,
-                            cursorColor = PrimaryBlueBright,
-                            focusedTextColor = White,
-                            unfocusedTextColor = White
-                        )
-                    )
-                    Button(
-                        onClick = {},
-                        enabled = isMyTurn && answer.isNotBlank(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright),
-                        modifier = Modifier.height(56.dp)
-                    ) {
-                        Text("POGODI", fontWeight = FontWeight.Bold, color = White)
-                    }
-                }
+@Composable
+private fun GuessInputBar(
+    hint: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Surface(color = NavyLight, shadowElevation = 8.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            IconButton(onClick = onCancel) {
+                Icon(Icons.Default.Close, null, tint = MediumGray)
+            }
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                placeholder = { Text(hint, color = MediumGray) },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = PrimaryBlueBright,
+                    unfocusedBorderColor = MediumGray,
+                    cursorColor = PrimaryBlueBright,
+                    focusedTextColor = White,
+                    unfocusedTextColor = White
+                )
+            )
+            Button(
+                onClick = onSubmit,
+                enabled = value.isNotBlank(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright),
+                modifier = Modifier.height(56.dp)
+            ) {
+                Text("POGODI", fontWeight = FontWeight.Bold, color = White)
             }
         }
     }
 }
 
 @Composable
-private fun ClueCell(text: String, isRevealed: Boolean, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun AsocijacijeClueCell(
+    text: String,
+    isRevealed: Boolean,
+    isClickable: Boolean = false,
+    color: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    // Closed: solid game color bg + label (A1/B2..) in dark text (tappable to reveal)
+    // Revealed: NavyCard bg + white text
+    val bgColor = when {
+        isRevealed -> NavyCard
+        isClickable -> color
+        else -> color.copy(alpha = 0.4f)
+    }
+    val borderColor = when {
+        isRevealed -> color.copy(alpha = 0.5f)
+        isClickable -> color
+        else -> color.copy(alpha = 0.25f)
+    }
     Box(
         modifier = modifier
             .height(64.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(if (isRevealed) color.copy(alpha = 0.15f) else NavyCard)
-            .border(1.5.dp, if (isRevealed) color.copy(alpha = 0.6f) else DarkGray, RoundedCornerShape(10.dp))
-            .clickable(enabled = !isRevealed, onClick = onClick),
+            .background(bgColor)
+            .border(1.5.dp, borderColor, RoundedCornerShape(10.dp))
+            .clickable(enabled = isClickable || isRevealed, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        if (isRevealed) {
-            Text(text, color = White, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(4.dp))
-        } else {
-            Icon(Icons.Default.Lock, null, tint = MediumGray, modifier = Modifier.size(18.dp))
-        }
+        Text(
+            text = text,
+            color = if (isRevealed) White else if (isClickable) Navy else Navy.copy(alpha = 0.7f),
+            fontWeight = if (isRevealed) FontWeight.SemiBold else FontWeight.ExtraBold,
+            fontSize = if (isRevealed) 10.sp else 12.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(4.dp)
+        )
     }
 }
 
 @Composable
-private fun SolutionCell(text: String, isSolved: Boolean, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun AsocijacijeSolutionCell(
+    text: String,
+    isSolved: Boolean,
+    color: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    // Solved column solution = Accent4 (mint) bg + Navy text
     Box(
         modifier = modifier
             .height(40.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isSolved) color else NavyCard)
-            .border(1.5.dp, color.copy(alpha = if (isSolved) 1f else 0.4f), RoundedCornerShape(8.dp))
+            .background(if (isSolved) Accent4 else NavyCard)
+            .border(1.5.dp, if (isSolved) Accent4 else color.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
             .clickable(enabled = !isSolved, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            color = if (isSolved) White else color.copy(alpha = 0.5f),
-            fontWeight = if (isSolved) FontWeight.Bold else FontWeight.Normal,
+            color = if (isSolved) Navy else color.copy(alpha = 0.8f),
+            fontWeight = if (isSolved) FontWeight.ExtraBold else FontWeight.SemiBold,
             fontSize = 10.sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 4.dp)
         )
     }
+}
+
+@Composable
+private fun AsocijacijeResultCard(myScore: Int, opponentScore: Int) {
+    val winner = when {
+        myScore > opponentScore -> "Pobedio/la si!"
+        myScore < opponentScore -> "Protivnik je pobedio."
+        else -> "Nerešeno!"
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = NavyCard),
+        border = androidx.compose.foundation.BorderStroke(2.dp, Gold)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(Icons.Default.EmojiEvents, null, tint = Gold, modifier = Modifier.size(40.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(winner, color = Gold, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Ti", color = LightGray, style = MaterialTheme.typography.labelSmall)
+                    Text("$myScore", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp)
+                    Text("bodova", color = MediumGray, style = MaterialTheme.typography.labelSmall)
+                }
+                Text(":", color = MediumGray, fontWeight = FontWeight.Bold, fontSize = 28.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Protivnik", color = LightGray, style = MaterialTheme.typography.labelSmall)
+                    Text("$opponentScore", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp)
+                    Text("bodova", color = MediumGray, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+private sealed class GuessMode {
+    object None : GuessMode()
+    object Final : GuessMode()
+    data class Column(val col: Int) : GuessMode()
 }

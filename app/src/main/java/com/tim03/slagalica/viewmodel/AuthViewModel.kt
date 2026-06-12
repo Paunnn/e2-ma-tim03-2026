@@ -116,6 +116,15 @@ class AuthViewModel(
         }
     }
 
+    fun loginAsGuest() {
+        viewModelScope.launch {
+            _uiState.value = AuthUiState(isLoading = true)
+            repo.loginAsGuest()
+                .onSuccess { _uiState.value = AuthUiState(navigateTo = AuthNavEvent.HOME) }
+                .onFailure { _uiState.value = AuthUiState(error = "Gost prijava nije uspela") }
+        }
+    }
+
     fun logout() {
         repo.logout()
         _uiState.value = AuthUiState(navigateTo = AuthNavEvent.LOGIN)

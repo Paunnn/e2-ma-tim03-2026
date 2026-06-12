@@ -108,34 +108,16 @@ fun SpojniceScreen(onExitClick: () -> Unit) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            "SPOJNICE",
-                            fontWeight = FontWeight.ExtraBold,
-                            color = White,
-                            letterSpacing = 1.sp,
-                            fontSize = 16.sp
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onExitClick) {
-                            Icon(Icons.Default.Close, null, tint = LightGray)
-                        }
-                    },
-                    actions = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(end = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(Icons.Default.Token, null, tint = GoldLight, modifier = Modifier.size(16.dp))
-                            Text("5", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(16.dp))
-                            Text("142", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = NavyLight)
+                GameHud(
+                    gameName = "Spojnice",
+                    gameColor = GameSpojnice,
+                    gameIcon = "⫶",
+                    round = "${currentRound + 1}/${mockRounds.size} runda",
+                    timeLeft = timeLeft,
+                    totalTime = 30,
+                    myScore = myScore,
+                    oppScore = opponentScore,
+                    onExit = onExitClick
                 )
             }
         ) { padding ->
@@ -151,72 +133,6 @@ fun SpojniceScreen(onExitClick: () -> Unit) {
                         onFinish = onExitClick
                     )
                 } else {
-                Column(modifier = Modifier.background(NavyLight)) {
-                    LinearProgressIndicator(
-                        progress = timeLeft.toFloat() / 30f,
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = timerColor,
-                        trackColor = DarkGray
-                    )
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(Icons.Default.Timer, null, tint = timerColor, modifier = Modifier.size(14.dp))
-                            Text("$timeLeft s", color = timerColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(NavyCard)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Runda ${currentRound + 1} / 2",
-                        color = Gold,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isMyTurn && !showOpponentPhase) PrimaryBlue else DarkGray
-                    ) {
-                        Text(
-                            when {
-                                showOpponentPhase -> "  Tvoj red (bonus)  "
-                                isMyTurn -> "  Tvoj red  "
-                                else -> "  Protivnikov red  "
-                            },
-                            color = if (isMyTurn || showOpponentPhase) White else LightGray,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(PrimaryBlue.copy(alpha = 0.3f), Navy, WarningOrange.copy(alpha = 0.15f))
-                            )
-                        )
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    PlayerChip(name = "Ti", score = myScore, isActive = true)
-                    Text("VS", color = MediumGray, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    PlayerChip(name = "Protivnik", score = opponentScore, isActive = false)
-                }
-
                 Column(
                     modifier = Modifier
                         .weight(1f)

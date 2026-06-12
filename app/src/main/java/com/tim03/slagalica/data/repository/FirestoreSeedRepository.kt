@@ -3,14 +3,19 @@ package com.tim03.slagalica.data.repository
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
-/**
- * Pokreni seedDatabase() jednom da popuniš Firestore sa pitanjima za Korak po korak.
- * Pozovi je npr. iz MainActivity.onCreate() samo jednom, pa ukloni poziv.
- */
 class FirestoreSeedRepository {
     private val db = FirebaseFirestore.getInstance()
 
     suspend fun seedDatabase() {
+        seedKorakPoKorak()
+        seedAsocijacije()
+    }
+
+    private suspend fun seedKorakPoKorak() {
+        val collection = db.collection("korak_po_korak")
+        val existing = collection.get().await()
+        if (!existing.isEmpty) return
+
         val questions = listOf(
             mapOf(
                 "answer" to "Steve Jobs",
@@ -73,13 +78,92 @@ class FirestoreSeedRepository {
                 )
             )
         )
+        questions.forEach { collection.add(it).await() }
+    }
 
-        val collection = db.collection("korak_po_korak")
+    private suspend fun seedAsocijacije() {
+        val collection = db.collection("asocijacije")
         val existing = collection.get().await()
-        if (!existing.isEmpty) return // Ne seedi ako već postoje podaci
+        if (!existing.isEmpty) return
 
-        questions.forEach { question ->
-            collection.add(question).await()
-        }
+        val questions = listOf(
+            mapOf(
+                "columnA" to mapOf(
+                    "clues" to listOf("Tigar", "Lav", "Leopard", "Gepard"),
+                    "solution" to "Mačke"
+                ),
+                "columnB" to mapOf(
+                    "clues" to listOf("Ajkula", "Delfin", "Hobotnica", "Tuna"),
+                    "solution" to "Morska bića"
+                ),
+                "columnC" to mapOf(
+                    "clues" to listOf("Orao", "Sova", "Vrabac", "Labud"),
+                    "solution" to "Ptice"
+                ),
+                "columnD" to mapOf(
+                    "clues" to listOf("Pas", "Mačka", "Hamster", "Zec"),
+                    "solution" to "Kućni ljubimci"
+                ),
+                "finalSolution" to "ŽIVOTINJE"
+            ),
+            mapOf(
+                "columnA" to mapOf(
+                    "clues" to listOf("Beograd", "Novi Sad", "Niš", "Kragujevac"),
+                    "solution" to "Srpski gradovi"
+                ),
+                "columnB" to mapOf(
+                    "clues" to listOf("Drina", "Sava", "Tisa", "Morava"),
+                    "solution" to "Reke Srbije"
+                ),
+                "columnC" to mapOf(
+                    "clues" to listOf("Đoković", "Ivanović", "Troicki", "Zimnjić"),
+                    "solution" to "Srpski teniseri"
+                ),
+                "columnD" to mapOf(
+                    "clues" to listOf("Kopaonik", "Tara", "Zlatibor", "Fruška Gora"),
+                    "solution" to "Planine Srbije"
+                ),
+                "finalSolution" to "SRBIJA"
+            ),
+            mapOf(
+                "columnA" to mapOf(
+                    "clues" to listOf("Paris", "London", "Berlin", "Madrid"),
+                    "solution" to "Evropske prestonice"
+                ),
+                "columnB" to mapOf(
+                    "clues" to listOf("Pikaso", "Rembrant", "Da Vinči", "Mikelanđelo"),
+                    "solution" to "Slikari"
+                ),
+                "columnC" to mapOf(
+                    "clues" to listOf("Gitara", "Klavir", "Violina", "Bubnjevi"),
+                    "solution" to "Instrumenti"
+                ),
+                "columnD" to mapOf(
+                    "clues" to listOf("Pitagora", "Arhimed", "Euklid", "Njutn"),
+                    "solution" to "Naučnici"
+                ),
+                "finalSolution" to "KULTURA"
+            ),
+            mapOf(
+                "columnA" to mapOf(
+                    "clues" to listOf("Kabadahija", "Uštipak", "Gibanica", "Prebranac"),
+                    "solution" to "Srpska jela"
+                ),
+                "columnB" to mapOf(
+                    "clues" to listOf("Rakija", "Vino", "Pivo", "Sok od šljive"),
+                    "solution" to "Srpska pića"
+                ),
+                "columnC" to mapOf(
+                    "clues" to listOf("Slava", "Krsna slava", "Božić", "Vaskrs"),
+                    "solution" to "Srpski praznici"
+                ),
+                "columnD" to mapOf(
+                    "clues" to listOf("Šajkača", "Opanci", "Narodna nošnja", "Vezeni prsluk"),
+                    "solution" to "Srpska tradicija"
+                ),
+                "finalSolution" to "SRPSKA KULTURA"
+            )
+        )
+        questions.forEach { collection.add(it).await() }
     }
 }

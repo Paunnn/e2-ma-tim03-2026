@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -39,31 +40,26 @@ fun KorakPoKorakScreen(
     var answer by remember { mutableStateOf("") }
 
     val timerColor = when {
-        state.timeLeft > 30 -> TimerGreen
-        state.timeLeft > 10 -> TimerYellow
+        state.timeLeft > 6 -> TimerGreen
+        state.timeLeft > 3 -> TimerYellow
         else -> TimerRed
     }
-    val totalTime = if (state.phase == KorakPoKorakPhase.OPPONENT_BONUS || state.phase == KorakPoKorakPhase.MY_BONUS) 10 else 70
+    val totalTime = 10
 
     Box(modifier = Modifier.fillMaxSize().background(Navy)) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = { Text("KORAK PO KORAK", fontWeight = FontWeight.ExtraBold, color = White, letterSpacing = 1.sp, fontSize = 16.sp) },
-                    navigationIcon = {
-                        IconButton(onClick = onExitClick) { Icon(Icons.Default.Close, null, tint = LightGray) }
-                    },
-                    actions = {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(Icons.Default.Token, null, tint = GoldLight, modifier = Modifier.size(16.dp))
-                            Text("5", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(16.dp))
-                            Text("0", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = NavyLight)
+                GameHud(
+                    gameName = "Korak po korak",
+                    gameColor = GameKorak,
+                    gameIcon = "↦",
+                    round = "${state.currentRound}/2 runda",
+                    timeLeft = state.timeLeft,
+                    totalTime = totalTime,
+                    myScore = state.myScore,
+                    oppScore = state.opponentScore,
+                    onExit = onExitClick
                 )
             }
         ) { padding ->
@@ -82,50 +78,6 @@ fun KorakPoKorakScreen(
                         GameOverContent(myScore = state.myScore, opponentScore = state.opponentScore, onFinish = onExitClick)
                     }
                     else -> {
-                        // Timer bar
-                        Column(modifier = Modifier.background(NavyLight)) {
-                            LinearProgressIndicator(
-                                progress = state.timeLeft.toFloat() / totalTime,
-                                modifier = Modifier.fillMaxWidth().height(6.dp),
-                                color = timerColor, trackColor = DarkGray
-                            )
-                            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.Timer, null, tint = timerColor, modifier = Modifier.size(16.dp))
-                                    Text("${state.timeLeft} s", color = timerColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                }
-                            }
-                        }
-
-                        // Round + phase indicator
-                        Row(
-                            modifier = Modifier.fillMaxWidth().background(NavyCard).padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Runda ${state.currentRound} / 2", color = Gold, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                            Surface(shape = RoundedCornerShape(8.dp), color = phaseColor(state.phase).copy(alpha = 0.25f)) {
-                                Text(
-                                    phaseLabel(state.phase),
-                                    color = phaseColor(state.phase),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        // Scores
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .background(Brush.horizontalGradient(listOf(PrimaryBlue.copy(alpha = 0.3f), Navy, WarningOrange.copy(alpha = 0.15f))))
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            PlayerChip(name = "Ti", score = state.myScore, isActive = state.phase == KorakPoKorakPhase.MY_TURN || state.phase == KorakPoKorakPhase.MY_BONUS)
-                            Text("VS", color = MediumGray, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            PlayerChip(name = "Protivnik", score = state.opponentScore, isActive = state.phase == KorakPoKorakPhase.WAITING_OPPONENT || state.phase == KorakPoKorakPhase.OPPONENT_BONUS)
-                        }
-
                         // Result message
                         state.lastResultMessage?.let { msg ->
                             Card(
@@ -166,97 +118,108 @@ fun KorakPoKorakScreen(
                             steps.forEachIndexed { index, clue ->
                                 val isRevealed = index < state.revealedSteps
                                 val isCurrent = index == state.revealedSteps - 1 && isRevealed
+                                val stepPoints = (20 - index * 2).coerceAtLeast(8)
                                 AnimatedVisibility(visible = true, enter = fadeIn() + slideInVertically()) {
-                                    StepCard(stepNumber = index + 1, clueText = clue, isRevealed = isRevealed, isCurrent = isCurrent)
+                                    StepCard(
+                                        stepNumber = index + 1,
+                                        clueText = clue,
+                                        isRevealed = isRevealed,
+                                        isCurrent = isCurrent,
+                                        potentialPoints = stepPoints
+                                    )
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
 
-                            if (state.phase == KorakPoKorakPhase.OPPONENT_BONUS) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = WarningOrange.copy(alpha = 0.1f)),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, WarningOrange.copy(alpha = 0.4f))
-                                ) {
-                                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Info, null, tint = WarningOrange, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Protivnik ima 10s da osvoji 5 bodova.", color = WarningOrange, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            }
-
-                            if (state.phase == KorakPoKorakPhase.WAITING_OPPONENT) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = PrimaryBlue.copy(alpha = 0.1f))
-                                ) {
-                                    Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = PrimaryBlueLight, strokeWidth = 2.dp)
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text("Protivnik igra svoju rundu...", color = PrimaryBlueLight, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            }
-
-                            if (state.phase == KorakPoKorakPhase.MY_BONUS) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = SuccessGreen.copy(alpha = 0.1f)),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.4f))
-                                ) {
-                                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.EmojiEvents, null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Tvoja šansa! Pogodi za 5 bodova.", color = SuccessGreen, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            }
                         }
 
-                        // Answer input
-                        val canAnswer = state.phase == KorakPoKorakPhase.MY_TURN || state.phase == KorakPoKorakPhase.MY_BONUS
-                        Surface(color = NavyLight, shadowElevation = 8.dp) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = answer,
-                                    onValueChange = { answer = it },
-                                    placeholder = { Text("Unesite odgovor...", color = MediumGray) },
-                                    enabled = canAnswer,
-                                    singleLine = true, modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = PrimaryBlueBright, unfocusedBorderColor = MediumGray,
-                                        cursorColor = PrimaryBlueBright, focusedTextColor = White, unfocusedTextColor = White,
-                                        disabledBorderColor = DarkGray, disabledTextColor = MediumGray
-                                    )
-                                )
-                                Button(
-                                    onClick = {
-                                        when (state.phase) {
-                                            KorakPoKorakPhase.MY_TURN -> { viewModel.submitAnswer(answer); answer = "" }
-                                            KorakPoKorakPhase.MY_BONUS -> { viewModel.submitMyBonusAnswer(answer); answer = "" }
-                                            else -> {}
-                                        }
-                                    },
-                                    enabled = canAnswer && answer.isNotBlank(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright),
-                                    modifier = Modifier.height(56.dp)
+                        // Phase-specific bottom bar (replaces always-visible disabled input)
+                        when (state.phase) {
+                            KorakPoKorakPhase.MY_TURN, KorakPoKorakPhase.MY_BONUS -> {
+                                val isBonusRound = state.phase == KorakPoKorakPhase.MY_BONUS
+                                Surface(
+                                    color = if (isBonusRound) GameKorak.copy(alpha = 0.12f) else NavyLight,
+                                    shadowElevation = 8.dp
                                 ) {
-                                    Text("POGODI", fontWeight = FontWeight.Bold, color = White)
+                                    Column {
+                                        if (isBonusRound) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(Icons.Default.EmojiEvents, null, tint = GameKorak, modifier = Modifier.size(14.dp))
+                                                Text(
+                                                    "BONUS · Pogodi protivnikovu reč za +5 · ${state.timeLeft}s",
+                                                    color = GameKorak, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            val accentColor = if (isBonusRound) GameKorak else PrimaryBlueBright
+                                            OutlinedTextField(
+                                                value = answer,
+                                                onValueChange = { answer = it },
+                                                placeholder = { Text("Unesite odgovor...", color = MediumGray) },
+                                                singleLine = true, modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = accentColor, unfocusedBorderColor = MediumGray,
+                                                    cursorColor = accentColor, focusedTextColor = White, unfocusedTextColor = White
+                                                )
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    if (isBonusRound) { viewModel.submitMyBonusAnswer(answer); answer = "" }
+                                                    else { viewModel.submitAnswer(answer); answer = "" }
+                                                },
+                                                enabled = answer.isNotBlank(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                                                modifier = Modifier.height(56.dp)
+                                            ) {
+                                                Text("POGODI", fontWeight = FontWeight.Bold,
+                                                    color = if (isBonusRound) Navy else White)
+                                            }
+                                        }
+                                    }
                                 }
                             }
+                            KorakPoKorakPhase.OPPONENT_BONUS -> {
+                                Surface(color = NavyLight, shadowElevation = 8.dp) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = WarningOrange, strokeWidth = 2.5.dp)
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Protivnik pokušava da pogodi...", color = WarningOrange, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                            Text("${state.timeLeft}s preostalo", color = MediumGray, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                            KorakPoKorakPhase.WAITING_OPPONENT -> {
+                                Surface(color = NavyLight, shadowElevation = 8.dp) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = PrimaryBlueBright, strokeWidth = 2.5.dp)
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Protivnik igra svoju rundu...", color = PrimaryBlueLight, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                            Text("${state.timeLeft}s preostalo", color = MediumGray, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {}
                         }
                     }
                 }
@@ -306,52 +269,75 @@ fun PlayerChip(name: String, score: Int, isActive: Boolean) {
 }
 
 @Composable
-private fun StepCard(stepNumber: Int, clueText: String, isRevealed: Boolean, isCurrent: Boolean) {
-    val borderColor = when {
-        isCurrent -> Gold
-        isRevealed -> PrimaryBlue.copy(alpha = 0.5f)
-        else -> Color.Transparent
-    }
+private fun StepCard(stepNumber: Int, clueText: String, isRevealed: Boolean, isCurrent: Boolean, potentialPoints: Int = 20 - (stepNumber - 1) * 2) {
+    // Current step: solid GameKorak bg + Navy text
+    // Revealed (not current): NavyCard bg + white text
+    // Unrevealed: NavyLight, opacity 0.55, dashed-style border
     val bgColor = when {
-        isCurrent -> NavyCard
-        isRevealed -> NavyCard.copy(alpha = 0.7f)
-        else -> NavyLight
+        isCurrent  -> GameKorak
+        isRevealed -> NavyCard
+        else       -> NavyLight
+    }
+    val borderColor = when {
+        isCurrent  -> GameKorak
+        isRevealed -> GameKorak.copy(alpha = 0.3f)
+        else       -> DarkGray
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth()
-            .then(if (borderColor != Color.Transparent) Modifier.border(1.5.dp, borderColor, RoundedCornerShape(12.dp)) else Modifier),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = bgColor)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (!isRevealed) Modifier.alpha(0.55f) else Modifier)
     ) {
-        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(28.dp).clip(CircleShape).background(if (isRevealed) PrimaryBlue else MediumGray),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("$stepNumber", color = White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            if (isRevealed) {
-                Column {
-                    if (isCurrent) Text("Korak $stepNumber", color = Gold, style = MaterialTheme.typography.labelSmall)
+        Card(
+            modifier = Modifier.fillMaxWidth().border(1.5.dp, borderColor, RoundedCornerShape(12.dp)),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = bgColor)
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(28.dp).clip(CircleShape)
+                        .background(if (isCurrent) Navy else if (isRevealed) GameKorak.copy(alpha = 0.2f) else MediumGray),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
-                        clueText,
-                        color = if (isCurrent) White else OffWhite,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal
+                        "$stepNumber",
+                        color = if (isCurrent) GameKorak else if (isRevealed) GameKorak else White,
+                        fontWeight = FontWeight.ExtraBold, fontSize = 12.sp
                     )
                 }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Default.Lock, null, tint = MediumGray, modifier = Modifier.size(14.dp))
-                    Text("Korak $stepNumber je skriven", color = MediumGray, style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.width(12.dp))
+                if (isRevealed) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            clueText,
+                            color = if (isCurrent) Navy else White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.SemiBold
+                        )
+                    }
+                } else {
+                    Text(
+                        "Korak $stepNumber",
+                        color = MediumGray, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
-            }
-            if (isCurrent) {
-                Spacer(modifier = Modifier.weight(1f))
-                Surface(shape = RoundedCornerShape(6.dp), color = Gold.copy(alpha = 0.2f)) {
-                    Text("AKTIVAN", color = Gold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                // "+N bodova" badge
+                if (isRevealed) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isCurrent) Navy.copy(alpha = 0.25f) else NavyCardLight)
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            "+$potentialPoints",
+                            color = if (isCurrent) Navy else GameKorak,
+                            fontSize = 11.sp, fontWeight = FontWeight.ExtraBold
+                        )
+                    }
                 }
             }
         }

@@ -15,9 +15,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -46,19 +53,16 @@ fun MojBrojScreen(
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = { Text("MOJ BROJ", fontWeight = FontWeight.ExtraBold, color = White, letterSpacing = 1.sp, fontSize = 16.sp) },
-                    navigationIcon = { IconButton(onClick = onExitClick) { Icon(Icons.Default.Close, null, tint = LightGray) } },
-                    actions = {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(Icons.Default.Token, null, tint = GoldLight, modifier = Modifier.size(16.dp))
-                            Text("5", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(16.dp))
-                            Text("0", color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = NavyLight)
+                GameHud(
+                    gameName = "Moj broj",
+                    gameColor = GameMojBroj,
+                    gameIcon = "#",
+                    round = "${state.currentRound}/2 runda",
+                    timeLeft = state.timeLeft,
+                    totalTime = 60,
+                    myScore = state.myScore,
+                    oppScore = state.opponentScore,
+                    onExit = onExitClick
                 )
             }
         ) { padding ->
@@ -66,45 +70,6 @@ fun MojBrojScreen(
                 if (state.gameOver) {
                     GameOverContent(myScore = state.myScore, opponentScore = state.opponentScore, onFinish = onExitClick)
                 } else {
-                    // Timer bar
-                    Column(modifier = Modifier.background(NavyLight)) {
-                        LinearProgressIndicator(
-                            progress = state.timeLeft.toFloat() / 60f,
-                            modifier = Modifier.fillMaxWidth().height(6.dp),
-                            color = timerColor, trackColor = DarkGray
-                        )
-                        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Icon(Icons.Default.Timer, null, tint = timerColor, modifier = Modifier.size(16.dp))
-                                Text("${state.timeLeft} s", color = timerColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            }
-                        }
-                    }
-
-                    // Round + shake hint
-                    Row(
-                        modifier = Modifier.fillMaxWidth().background(NavyCard).padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Runda ${state.currentRound} / 2", color = Gold, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.PhoneAndroid, null, tint = LightGray, modifier = Modifier.size(14.dp))
-                            Text("Tresite za stop", color = LightGray, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-
-                    // Scores
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(Brush.horizontalGradient(listOf(PrimaryBlue.copy(alpha = 0.3f), Navy, WarningOrange.copy(alpha = 0.15f))))
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        PlayerChip(name = "Ti", score = state.myScore, isActive = true)
-                        Text("VS", color = MediumGray, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        PlayerChip(name = "Protivnik", score = state.opponentScore, isActive = false)
-                    }
-
                     // Round result message
                     AnimatedVisibility(visible = state.roundResultMessage != null && state.phase == MojBrojPhase.SUBMITTED) {
                         Card(
@@ -128,46 +93,80 @@ fun MojBrojScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         // Target number card
+                        val isWaiting = state.phase == MojBrojPhase.WAITING_FIRST_STOP || state.phase == MojBrojPhase.WAITING_SECOND_STOP
+                        val isRevealed = !isWaiting
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (state.phase != MojBrojPhase.WAITING_FIRST_STOP && state.phase != MojBrojPhase.WAITING_SECOND_STOP)
-                                    PrimaryBlue.copy(alpha = 0.2f) else NavyCard
+                                containerColor = if (isRevealed) PrimaryBlue.copy(alpha = 0.2f) else NavyCard
                             ),
-                            border = if (state.phase != MojBrojPhase.WAITING_FIRST_STOP && state.phase != MojBrojPhase.WAITING_SECOND_STOP)
-                                androidx.compose.foundation.BorderStroke(1.5.dp, PrimaryBlueBright) else null
+                            border = if (isRevealed)
+                                androidx.compose.foundation.BorderStroke(1.5.dp, GameMojBroj.copy(alpha = 0.6f))
+                            else
+                                androidx.compose.foundation.BorderStroke(1.dp, NavyCardLight)
                         ) {
-                            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                Column {
-                                    Text("Traženi broj", color = LightGray, style = MaterialTheme.typography.labelSmall)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    AnimatedContent(targetState = state.phase != MojBrojPhase.WAITING_FIRST_STOP && state.phase != MojBrojPhase.WAITING_SECOND_STOP) { revealed ->
-                                        if (revealed) {
-                                            Text("${state.targetNumber}", color = Gold, fontWeight = FontWeight.ExtraBold, fontSize = 48.sp)
-                                        } else {
-                                            Text("???", color = MediumGray, fontWeight = FontWeight.ExtraBold, fontSize = 48.sp)
-                                        }
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp, horizontal = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    "TRAŽENI BROJ",
+                                    color = MediumGray, fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                AnimatedContent(targetState = isRevealed) { revealed ->
+                                    if (revealed) {
+                                        Text(
+                                            "${state.targetNumber}",
+                                            color = GameMojBroj,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 56.sp,
+                                            modifier = Modifier.drawBehind {
+                                                drawIntoCanvas { canvas ->
+                                                    val paint = Paint()
+                                                    paint.asFrameworkPaint().apply {
+                                                        isAntiAlias = true
+                                                        color = android.graphics.Color.TRANSPARENT
+                                                        setShadowLayer(40f, 0f, 0f, GameMojBroj.copy(alpha = 0.55f).toArgb())
+                                                    }
+                                                    canvas.drawRect(-12f, -12f, size.width + 12f, size.height + 12f, paint)
+                                                }
+                                            }
+                                        )
+                                    } else {
+                                        Text("???", color = MediumGray, fontWeight = FontWeight.ExtraBold, fontSize = 56.sp)
                                     }
                                 }
-                                if (state.phase == MojBrojPhase.WAITING_FIRST_STOP || state.phase == MojBrojPhase.WAITING_SECOND_STOP) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Button(
-                                            onClick = { viewModel.pressStop() },
-                                            shape = RoundedCornerShape(12.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Gold)
-                                        ) {
-                                            Icon(Icons.Default.Stop, null, tint = Navy, modifier = Modifier.size(20.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("STOP", color = Navy, fontWeight = FontWeight.ExtraBold)
-                                        }
-                                        if (state.phase == MojBrojPhase.WAITING_SECOND_STOP) {
-                                            Text("${state.waitingForStopTimeLeft}s do auto-otkrivanja", color = LightGray, style = MaterialTheme.typography.labelSmall)
-                                        } else {
-                                            Text("ili tresite uređaj", color = MediumGray, style = MaterialTheme.typography.labelSmall)
-                                        }
-                                    }
+                            }
+                        }
+
+                        // STOP button — separate, prominent, below the card
+                        if (isWaiting) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Button(
+                                    onClick = { viewModel.pressStop() },
+                                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = GameMojBroj)
+                                ) {
+                                    Icon(Icons.Default.Stop, null, tint = Navy, modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("STOP", color = Navy, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                                 }
+                                Text(
+                                    text = if (state.phase == MojBrojPhase.WAITING_SECOND_STOP)
+                                        "${state.waitingForStopTimeLeft}s do automatskog otkrivanja"
+                                    else
+                                        "Pritisni STOP ili tresni uređaj",
+                                    color = MediumGray,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
                             }
                         }
 
@@ -281,12 +280,21 @@ fun MojBrojScreen(
 private fun MojBrojNumberButton(number: Int, isUsed: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier = modifier.height(52.dp).clip(RoundedCornerShape(10.dp))
-            .background(if (isUsed) DarkGray else NavyCard)
+            .background(if (isUsed) NavyLight else NavyCard)
             .border(1.5.dp, if (isUsed) DarkGray else PrimaryBlue.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+            .then(if (isUsed) Modifier.alpha(0.5f) else Modifier)
             .clickable(enabled = !isUsed, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text("$number", color = if (isUsed) MediumGray else White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text(
+            "$number",
+            color = if (isUsed) MediumGray else White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+            style = LocalTextStyle.current.copy(
+                textDecoration = if (isUsed) TextDecoration.LineThrough else TextDecoration.None
+            )
+        )
     }
 }
 
