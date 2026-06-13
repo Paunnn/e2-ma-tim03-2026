@@ -35,7 +35,8 @@ data class SkockoUiState(
     val timeLeft: Int = 30,
     val myScore: Int = 0,
     val opponentScore: Int = 0,
-    val message: String? = null
+    val message: String? = null,
+    val showRound1Solution: Boolean = false
 )
 
 class SkockoViewModel(
@@ -138,11 +139,7 @@ class SkockoViewModel(
                 message = "+$points bodova! Pogodio/la si kombinaciju!",
                 phase = SkockoPhase.MY_TURN
             )
-            // Move to round 2
-            viewModelScope.launch {
-                delay(1500L)
-                startRound2()
-            }
+            viewModelScope.launch { startRound2() }
         } else if (newAttempts.size >= 6) {
             timerJob?.cancel()
             _uiState.value = state.copy(
@@ -195,18 +192,20 @@ class SkockoViewModel(
                     )
                 }
             }
-            delay(500L)
             startRound2()
         }
     }
 
-    private fun startRound2() {
+    private suspend fun startRound2() {
+        _uiState.value = _uiState.value.copy(showRound1Solution = true)
+        delay(2500L)
         _uiState.value = _uiState.value.copy(
             currentRound = 2,
             phase = SkockoPhase.WAITING_OPPONENT,
             opponentAttempts = emptyList(),
             currentInput = emptyList(),
             timeLeft = 30,
+            showRound1Solution = false,
             message = "Runda 2: Protivnik igra!"
         )
         simulateOpponentRound2()

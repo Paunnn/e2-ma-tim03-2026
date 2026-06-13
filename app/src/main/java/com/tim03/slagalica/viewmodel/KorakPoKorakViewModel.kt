@@ -30,6 +30,7 @@ data class KorakPoKorakUiState(
     val myScore: Int = 0,
     val opponentScore: Int = 0,
     val lastResultMessage: String? = null,
+    val showAnswer: Boolean = false,
     val error: String? = null
 )
 
@@ -106,6 +107,7 @@ class KorakPoKorakViewModel(
 
     fun submitAnswer(answer: String) {
         if (_uiState.value.phase != KorakPoKorakPhase.MY_TURN) return
+        if (_uiState.value.showAnswer) return
         timerJob?.cancel()
         val correct = answer.trim().equals(currentQuestion?.answer?.trim(), ignoreCase = true)
         if (correct) {
@@ -113,9 +115,14 @@ class KorakPoKorakViewModel(
             val points = (20 - (_uiState.value.revealedSteps - 1) * 2).coerceAtLeast(8)
             _uiState.value = _uiState.value.copy(
                 myScore = _uiState.value.myScore + points,
-                lastResultMessage = "+$points bodova!"
+                lastResultMessage = "+$points bodova!",
+                showAnswer = true
             )
-            proceedAfterMyRound()
+            viewModelScope.launch {
+                delay(2500L)
+                _uiState.value = _uiState.value.copy(showAnswer = false)
+                proceedAfterMyRound()
+            }
         } else {
             // Wrong answer → advance to next step (same logic as timer expiry)
             _uiState.value = _uiState.value.copy(lastResultMessage = "Netačno!")
@@ -217,8 +224,11 @@ class KorakPoKorakViewModel(
                         val points = (20 - (opponentSteps - 1) * 2).coerceAtLeast(8)
                         _uiState.value = _uiState.value.copy(
                             opponentScore = _uiState.value.opponentScore + points,
-                            lastResultMessage = "Protivnik pogodio!"
+                            lastResultMessage = "Protivnik pogodio!",
+                            showAnswer = true
                         )
+                        delay(2500L)
+                        _uiState.value = _uiState.value.copy(showAnswer = false)
                         endGame()
                     } else {
                         // Opponent failed → I get bonus
@@ -258,15 +268,23 @@ class KorakPoKorakViewModel(
 
     fun submitMyBonusAnswer(answer: String) {
         if (_uiState.value.phase != KorakPoKorakPhase.MY_BONUS) return
+        if (_uiState.value.showAnswer) return
         timerJob?.cancel()
         val correct = answer.trim().equals(currentQuestion?.answer?.trim(), ignoreCase = true)
         if (correct) {
             _uiState.value = _uiState.value.copy(
                 myScore = _uiState.value.myScore + 5,
-                lastResultMessage = "+5 bodova!"
+                lastResultMessage = "+5 bodova!",
+                showAnswer = true
             )
+            viewModelScope.launch {
+                delay(2500L)
+                _uiState.value = _uiState.value.copy(showAnswer = false)
+                endGame()
+            }
+        } else {
+            endGame()
         }
-        endGame()
     }
 
     private fun endGame() {

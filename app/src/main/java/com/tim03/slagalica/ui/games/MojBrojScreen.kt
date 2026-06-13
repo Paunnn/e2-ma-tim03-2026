@@ -91,13 +91,42 @@ fun MojBrojScreen(
                             colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.1f)),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.3f))
                         ) {
-                            Text(
-                                state.roundResultMessage ?: "",
-                                color = Gold, style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold,
+                            Column(
                                 modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                                textAlign = TextAlign.Center
-                            )
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    state.roundResultMessage ?: "",
+                                    color = Gold, style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    textAlign = TextAlign.Center
+                                )
+                                HorizontalDivider(color = Gold.copy(alpha = 0.2f))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Ti", color = MediumGray, style = MaterialTheme.typography.labelSmall)
+                                        Text(
+                                            "${state.myRoundResult ?: "—"}",
+                                            color = if (state.myRoundResult == state.targetNumber) SuccessGreen else LightGray,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp
+                                        )
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Protivnik", color = MediumGray, style = MaterialTheme.typography.labelSmall)
+                                        Text(
+                                            "${state.opponentRoundResult ?: "—"}",
+                                            color = if (state.opponentRoundResult == state.targetNumber) SuccessGreen else LightGray,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 

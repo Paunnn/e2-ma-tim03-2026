@@ -36,12 +36,7 @@ fun AppNavigation(navController: NavHostController) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 },
-                onRegisterClick = { navController.navigate(Screen.Register.route) },
-                onGuestClick = {
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
-                    }
-                }
+                onRegisterClick = { navController.navigate(Screen.Register.route) }
             )
         }
 

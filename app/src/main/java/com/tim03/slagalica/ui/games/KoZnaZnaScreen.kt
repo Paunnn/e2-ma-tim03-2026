@@ -45,7 +45,6 @@ fun KoZnaZnaScreen(
     var myScore by remember { mutableStateOf(0) }
     var opponentScore by remember { mutableStateOf(0) }
     var questionTimeLeft by remember { mutableStateOf(5) }
-    var totalTimeLeft by remember { mutableStateOf(25) }
     var gameOver by remember { mutableStateOf(false) }
     var correctCount by remember { mutableStateOf(0) }
     var incorrectCount by remember { mutableStateOf(0) }
@@ -60,26 +59,9 @@ fun KoZnaZnaScreen(
     var questionStartTime by remember { mutableStateOf(0L) }
     var questionOutcomes by remember { mutableStateOf(mapOf<Int, Int>()) } // 1=player+10, -1=player-5, 0=no player score
 
-    // Total 25s game timer — only signals time-up; per-question flow handles saving
-    LaunchedEffect(state.isLoading, gameOver) {
-        if (state.isLoading || gameOver || questions.isEmpty()) return@LaunchedEffect
-        while (totalTimeLeft > 0 && !gameOver) {
-            delay(1000L)
-            totalTimeLeft--
-        }
-        if (!gameOver) {
-            gameOver = true
-        }
-    }
-
     // Per-question flow — resets on each new question
     LaunchedEffect(currentQuestionIndex, state.isLoading) {
-        if (state.isLoading || questions.isEmpty()) return@LaunchedEffect
-        if (gameOver) {
-            // Timer fired between questions — save now
-            if (!resultSaved) { resultSaved = true; viewModel.saveResult(correctCount, incorrectCount, won = myScore > opponentScore) }
-            return@LaunchedEffect
-        }
+        if (state.isLoading || questions.isEmpty() || gameOver) return@LaunchedEffect
 
         playerAnswerIndex = null
         playerAnswerTimeMs = null
@@ -93,23 +75,22 @@ fun KoZnaZnaScreen(
         launch {
             val oppDelay = (800L..4800L).random()
             delay(oppDelay)
-            if (!gameOver && !revealPhase) {
+            if (!revealPhase) {
                 opponentAnswerIndex = (0..3).random()
                 opponentAnswerTimeMs = oppDelay
-                // If player already answered, trigger reveal
                 if (playerAnswerIndex != null) revealPhase = true
             }
         }
 
         // 5s per-question countdown
         for (tick in 5 downTo 1) {
-            if (revealPhase || gameOver) break
+            if (revealPhase) break
             delay(1000L)
-            if (!revealPhase && !gameOver) questionTimeLeft = tick - 1
+            if (!revealPhase) questionTimeLeft = tick - 1
         }
-        if (!revealPhase && !gameOver) revealPhase = true
+        if (!revealPhase) revealPhase = true
 
-        // Show reveal for 2.5s — always complete and score, even if timer fired
+        // Reveal for 2.5s
         delay(2500L)
 
         val q = questions.getOrNull(currentQuestionIndex) ?: return@LaunchedEffect
@@ -120,14 +101,12 @@ fun KoZnaZnaScreen(
         val pTime = playerAnswerTimeMs ?: Long.MAX_VALUE
         val oTime = opponentAnswerTimeMs ?: Long.MAX_VALUE
 
-        // Player gets points: correct AND (opponent wrong OR player faster)
         val playerGetsPoints = pCorrect && (!oCorrect || pTime <= oTime)
         when {
             playerGetsPoints -> { myScore += 10; correctCount++ }
-            pCorrect -> correctCount++ // right but slower
+            pCorrect -> correctCount++
             pAnswered -> { myScore -= 5; incorrectCount++ }
         }
-        // Opponent gets points: correct AND (player wrong OR opponent faster)
         val opponentGetsPoints = oCorrect && (!pCorrect || oTime < pTime)
         when {
             opponentGetsPoints -> opponentScore += 10
@@ -141,7 +120,7 @@ fun KoZnaZnaScreen(
         }
         questionOutcomes = questionOutcomes + (currentQuestionIndex to outcome)
 
-        if (!gameOver && currentQuestionIndex < questions.size - 1) {
+        if (currentQuestionIndex < questions.size - 1) {
             currentQuestionIndex++
         } else {
             if (!resultSaved) {
@@ -428,16 +407,16 @@ private fun RevealPanel(
 
     val outcomeText = when {
         playerAnswerIndex == null && opponentAnswerIndex == null ->
-            "Niko nije odgovorio — nema promena"
+            "Niko nije odgovorio, nema promena"
         playerAnswerIndex == null ->
             if (oCorrect) "Protivnik tačno (+10 protivnik)" else "Protivnik netačno (-5 protivnik)"
         opponentAnswerIndex == null ->
             if (pCorrect) "Tačno! Nisi imao protivnika (+10)" else "Netačno (-5)"
         pCorrect && oCorrect ->
-            if (pTime <= oTime) "Oba tačno — Vi brži! +10 tebi" else "Oba tačno — Protivnik brži! +10 protivnik"
-        pCorrect -> "Tačno! Protivnik netačno — +10 tebi, -5 protivnik"
-        oCorrect -> "Netačno, protivnik tačno — -5 tebi, +10 protivnik"
-        else -> "Oba netačna — -5 tebi, -5 protivnik"
+            if (pTime <= oTime) "Oba tačno, Vi brži! +10 tebi" else "Oba tačno, Protivnik brži! +10 protivnik"
+        pCorrect -> "Tačno! Protivnik netačno, +10 tebi, -5 protivnik"
+        oCorrect -> "Netačno, protivnik tačno, -5 tebi, +10 protivnik"
+        else -> "Oba netačna, -5 tebi, -5 protivnik"
     }
 
     val outcomeColor = when {

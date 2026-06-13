@@ -124,13 +124,14 @@ fun AsocijacijeScreen(
                     (0..3).forEach { row ->
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             (0..3).forEach { col ->
-                                val isRevealed = state.revealed[col][row]
-                                val isSolved = state.columnSolved[col]
+                                val isRevealed = state.revealed[col][row] || state.revealAll
+                                val isSolved = state.columnSolved[col] || state.revealAll
                                 val clue = question.columns()[col].clues.getOrNull(row) ?: ""
                                 val canReveal = !isRevealed && !isSolved &&
                                     state.isMyTurn &&
                                     state.phase == AsocijacijePhase.MY_TURN &&
-                                    !state.hasRevealedThisTurn
+                                    !state.hasRevealedThisTurn &&
+                                    !state.revealAll
                                 val cellLabel = "${'A' + col}${row + 1}"
                                 AsocijacijeClueCell(
                                     text = if (isRevealed || isSolved) clue else cellLabel,
@@ -148,14 +149,14 @@ fun AsocijacijeScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         (0..3).forEach { col ->
-                            val isSolved = state.columnSolved[col]
+                            val isSolved = state.columnSolved[col] || state.revealAll
                             AsocijacijeSolutionCell(
                                 text = if (isSolved) question.columns()[col].solution else "Reši ${('A' + col)}",
                                 isSolved = isSolved,
                                 color = columnColors[col],
                                 modifier = Modifier.weight(1f),
                                 onClick = {
-                                    if (!isSolved && state.isMyTurn && state.phase == AsocijacijePhase.MY_TURN) {
+                                    if (!isSolved && state.isMyTurn && state.phase == AsocijacijePhase.MY_TURN && !state.revealAll) {
                                         guessMode = GuessMode.Column(col)
                                         answerText = ""
                                     }
@@ -165,23 +166,24 @@ fun AsocijacijeScreen(
                     }
 
                     // Final solution card
+                    val effectiveFinalSolved = state.finalSolved || state.revealAll
                     Spacer(modifier = Modifier.height(6.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
                             .background(
-                                if (state.finalSolved)
+                                if (effectiveFinalSolved)
                                     Brush.linearGradient(listOf(GameAsocijacije, PrimaryBlueBright))
                                 else
                                     Brush.linearGradient(listOf(NavyCard, NavyCard))
                             )
                             .border(
-                                if (state.finalSolved) 2.dp else 1.dp,
-                                if (state.finalSolved) GameAsocijacije else MediumGray,
+                                if (effectiveFinalSolved) 2.dp else 1.dp,
+                                if (effectiveFinalSolved) GameAsocijacije else MediumGray,
                                 RoundedCornerShape(14.dp)
                             )
-                            .clickable(enabled = !state.finalSolved && state.isMyTurn && state.phase == AsocijacijePhase.MY_TURN) {
+                            .clickable(enabled = !effectiveFinalSolved && state.isMyTurn && state.phase == AsocijacijePhase.MY_TURN && !state.revealAll) {
                                 guessMode = GuessMode.Final
                                 answerText = ""
                             }
@@ -191,17 +193,17 @@ fun AsocijacijeScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 "KONAČNO REŠENJE",
-                                color = if (state.finalSolved) Navy else MediumGray,
+                                color = if (effectiveFinalSolved) Navy else MediumGray,
                                 fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = if (state.finalSolved) question.finalSolution else "???",
-                                color = if (state.finalSolved) Navy else LightGray,
+                                text = if (effectiveFinalSolved) question.finalSolution else "???",
+                                color = if (effectiveFinalSolved) Navy else LightGray,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = if (state.finalSolved) 22.sp else 18.sp
+                                fontSize = if (effectiveFinalSolved) 22.sp else 18.sp
                             )
-                            if (!state.finalSolved && state.isMyTurn && state.phase == AsocijacijePhase.MY_TURN) {
+                            if (!effectiveFinalSolved && state.isMyTurn && state.phase == AsocijacijePhase.MY_TURN) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text("Tapni za pogađanje", color = MediumGray, style = MaterialTheme.typography.labelSmall)
                             }
@@ -216,7 +218,7 @@ fun AsocijacijeScreen(
             }
 
             // Input area
-            if (state.phase == AsocijacijePhase.MY_TURN && state.isMyTurn) {
+            if (state.phase == AsocijacijePhase.MY_TURN && state.isMyTurn && !state.revealAll) {
                 when (val mode = guessMode) {
                     is GuessMode.Column -> {
                         GuessInputBar(

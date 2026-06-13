@@ -30,7 +30,8 @@ data class AsocijacijeUiState(
     val message: String? = null,
     val isMyTurn: Boolean = true,
     // Per spec: player reveals one field then CAN guess before passing turn
-    val hasRevealedThisTurn: Boolean = false
+    val hasRevealedThisTurn: Boolean = false,
+    val revealAll: Boolean = false
 )
 
 class AsocijacijeViewModel(
@@ -102,19 +103,19 @@ class AsocijacijeViewModel(
     }
 
     private fun onTimerExpired() {
-        if (_uiState.value.currentRound == 1) {
-            timerJob?.cancel()
-            opponentJob?.cancel()
-            viewModelScope.launch {
-                delay(500L)
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(revealAll = true)
+            delay(2500L)
+            if (_uiState.value.currentRound == 1) {
+                opponentJob?.cancel()
                 startRound(2)
+            } else {
+                endGame()
             }
-        } else {
-            endGame()
         }
     }
 
-    // Player reveals a field — stays in MY_TURN so they can guess afterwards (per spec)
+    // Player reveals a field  stays in MY_TURN so they can guess afterwards (per spec)
     fun revealField(col: Int, row: Int) {
         val state = _uiState.value
         if (!state.isMyTurn || state.phase != AsocijacijePhase.MY_TURN) return
@@ -129,7 +130,7 @@ class AsocijacijeViewModel(
             hasRevealedThisTurn = true,
             message = null
         )
-        // Stay in MY_TURN — player can now guess or skip their turn
+        // Stay in MY_TURN player can now guess or skip their turn
     }
 
     // Player explicitly passes their turn without guessing

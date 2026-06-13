@@ -110,17 +110,31 @@ fun KorakPoKorakScreen(
                             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)
                         ) {
                             // Target hint card
+                            val isGameOver = state.phase == KorakPoKorakPhase.GAME_OVER || state.showAnswer
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = NavyCard)
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isGameOver) Gold.copy(alpha = 0.1f) else NavyCard
+                                ),
+                                border = if (isGameOver) androidx.compose.foundation.BorderStroke(1.5.dp, Gold.copy(alpha = 0.5f)) else null
                             ) {
                                 Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.HelpOutline, null, tint = MediumGray, modifier = Modifier.size(20.dp))
+                                    Icon(
+                                        if (isGameOver) Icons.Default.CheckCircle else Icons.Default.HelpOutline,
+                                        null,
+                                        tint = if (isGameOver) Gold else MediumGray,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Traženi pojam", color = MediumGray, style = MaterialTheme.typography.bodySmall)
+                                    Text("Traženi pojam", color = if (isGameOver) Gold.copy(alpha = 0.8f) else MediumGray, style = MaterialTheme.typography.bodySmall)
                                     Spacer(modifier = Modifier.weight(1f))
-                                    Text("???", color = LightGray, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                    Text(
+                                        if (isGameOver) state.question?.answer?.uppercase() ?: "?" else "???",
+                                        color = if (isGameOver) Gold else LightGray,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
                                 }
                             }
 

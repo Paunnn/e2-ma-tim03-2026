@@ -29,7 +29,6 @@ import com.tim03.slagalica.viewmodel.AuthViewModel
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onRegisterClick: () -> Unit,
-    onGuestClick: () -> Unit,
     viewModel: AuthViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -137,24 +136,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Divider(modifier = Modifier.weight(1f), color = MediumGray)
-                Text("  ili  ", color = LightGray, style = MaterialTheme.typography.bodySmall)
-                Divider(modifier = Modifier.weight(1f), color = MediumGray)
-            }
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedButton(
-                onClick = { viewModel.loginAsGuest() },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MediumGray)
-            ) {
-                Text("IGRAJ BEZ NALOGA", style = MaterialTheme.typography.labelLarge, color = LightGray)
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
 
             Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Text("Nemate nalog? ", color = LightGray, style = MaterialTheme.typography.bodyMedium)

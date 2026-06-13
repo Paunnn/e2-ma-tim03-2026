@@ -161,10 +161,10 @@ fun SpojniceScreen(
 
     val roundLabel = if (roundIdx == 0) "Runda 1/2" else "Runda 2/2"
     val phaseLabel = when (phase) {
-        SpojnicePhase.R1_ME  -> "Vaš red — Vi ste prvi"
-        SpojnicePhase.R1_OPP -> "Protivnikov red — preostali pojmovi"
-        SpojnicePhase.R2_OPP -> "Protivnikov red — Protivnik je prvi"
-        SpojnicePhase.R2_ME  -> "Vaš red — preostali pojmovi"
+        SpojnicePhase.R1_ME  -> "Vaš red, Vi ste prvi"
+        SpojnicePhase.R1_OPP -> "Protivnikov red, preostali pojmovi"
+        SpojnicePhase.R2_OPP -> "Protivnikov red, Protivnik je prvi"
+        SpojnicePhase.R2_ME  -> "Vaš red, preostali pojmovi"
         SpojnicePhase.DONE   -> "Kraj"
     }
 

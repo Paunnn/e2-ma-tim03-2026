@@ -10,7 +10,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tim03.slagalica.data.repository.UserRepository
 import com.tim03.slagalica.util.evalExpression
-import com.tim03.slagalica.util.recalcUsedIndices
 import com.tim03.slagalica.util.removeLastToken
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -37,6 +36,7 @@ data class MojBrojUiState(
     val availableNumbers: List<Int> = emptyList(),
     val expression: String = "",
     val usedNumberIndices: Set<Int> = emptySet(),
+    val expressionIndices: List<Int> = emptyList(),
     val expressionResult: Int? = null,
     val timeLeft: Int = 60,
     val waitingForStopTimeLeft: Int = 5,
@@ -186,10 +186,11 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
         } else {
             "${state.expression} $num"
         }
-        val newUsed = state.usedNumberIndices + index
+        val newIndices = state.expressionIndices + index
         _uiState.value = state.copy(
             expression = newExpr,
-            usedNumberIndices = newUsed,
+            usedNumberIndices = newIndices.toSet(),
+            expressionIndices = newIndices,
             expressionResult = evalExpression(newExpr)
         )
     }
@@ -207,11 +208,16 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
     fun backspace() {
         val state = _uiState.value
         if (state.phase != MojBrojPhase.PLAYING) return
+        val removedNumber = state.expression.trimEnd().lastOrNull()?.isDigit() == true
         val newExpr = removeLastToken(state.expression)
-        val newUsed = recalcUsedIndices(newExpr, state.availableNumbers)
+        val newIndices = if (removedNumber && state.expressionIndices.isNotEmpty())
+            state.expressionIndices.dropLast(1)
+        else
+            state.expressionIndices
         _uiState.value = state.copy(
             expression = newExpr,
-            usedNumberIndices = newUsed,
+            usedNumberIndices = newIndices.toSet(),
+            expressionIndices = newIndices,
             expressionResult = evalExpression(newExpr)
         )
     }
@@ -222,6 +228,7 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
         _uiState.value = state.copy(
             expression = "",
             usedNumberIndices = emptySet(),
+            expressionIndices = emptyList(),
             expressionResult = null
         )
     }

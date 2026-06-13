@@ -130,12 +130,10 @@ fun SkockoScreen(
                 }
 
                 // Attempts display
-                val attemptsToShow = when {
-                    state.phase == SkockoPhase.WAITING_OPPONENT ||
-                    (state.phase == SkockoPhase.MY_BONUS && state.currentRound == 2) ->
-                        state.opponentAttempts
-                    else -> state.myAttempts
-                }
+                val showingOpponentAttempts = state.phase == SkockoPhase.WAITING_OPPONENT ||
+                    state.phase == SkockoPhase.MY_BONUS ||
+                    state.phase == SkockoPhase.GAME_OVER
+                val attemptsToShow = if (showingOpponentAttempts) state.opponentAttempts else state.myAttempts
 
                 val currentInputForDisplay = when {
                     isInteractive && attemptsToShow.size < 6 -> state.currentInput
@@ -143,7 +141,7 @@ fun SkockoScreen(
                 }
 
                 Text(
-                    text = if (state.phase == SkockoPhase.WAITING_OPPONENT) "Pokušaji protivnika" else "Pokušaji",
+                    text = if (showingOpponentAttempts) "Pokušaji protivnika (Runda 2)" else "Pokušaji (Runda 1)",
                     color = LightGray,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold
@@ -158,6 +156,71 @@ fun SkockoScreen(
                         isCurrent = isCurrent,
                         currentSymbols = if (isCurrent) currentInputForDisplay else null
                     )
+                }
+
+                // MY_BONUS: dedicated 7th row for player's one attempt
+                if (state.phase == SkockoPhase.MY_BONUS) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = GameSkocko.copy(alpha = 0.4f))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "TVOJ BONUS POKUŠAJ",
+                        color = GameSkocko,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SkockoAttemptRow(
+                        rowIndex = 6,
+                        attempt = null,
+                        isCurrent = true,
+                        currentSymbols = state.currentInput
+                    )
+                }
+
+                // R1 solution shown briefly after round 1 ends, before round 2 starts
+                if (state.showRound1Solution) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.08f)),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Gold.copy(alpha = 0.4f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "REŠENJE RUNDE 1",
+                                color = Gold, fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                state.mySolution.forEach { symIdx -> SkockoSlot(symbolIndex = symIdx, isCurrent = false) }
+                            }
+                        }
+                    }
+                }
+
+                // GAME_OVER: reveal R2 solution only (R1 was already shown after round 1)
+                if (state.phase == SkockoPhase.GAME_OVER) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.08f)),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Gold.copy(alpha = 0.4f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "REŠENJE RUNDE 2",
+                                color = Gold, fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                state.opponentSolution.forEach { symIdx -> SkockoSlot(symbolIndex = symIdx, isCurrent = false) }
+                            }
+                        }
+                    }
                 }
 
                 if (isInteractive) {
