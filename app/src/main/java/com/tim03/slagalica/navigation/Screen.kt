@@ -12,5 +12,6 @@ sealed class Screen(val route: String) {
     object Spojnice : Screen("game/spojnice")
     object Asocijacije : Screen("game/asocijacije")
     object Skocko : Screen("game/skocko")
+    object Partija : Screen("partija")
     object Notifications : Screen("notifications")
 }

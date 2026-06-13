@@ -8,6 +8,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.tim03.slagalica.data.repository.UserRepository
 import com.tim03.slagalica.util.evalExpression
 import com.tim03.slagalica.util.recalcUsedIndices
 import com.tim03.slagalica.util.removeLastToken
@@ -54,6 +55,13 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
     private val _uiState = MutableStateFlow(MojBrojUiState())
     val uiState: StateFlow<MojBrojUiState> = _uiState.asStateFlow()
 
+    private val userRepo = UserRepository()
+    private val _username = MutableStateFlow("Igrač")
+    val username: StateFlow<String> = _username.asStateFlow()
+
+    private var mojBrojHitsLocal = 0
+    private var resultSaved = false
+
     private var timerJob: Job? = null
     private var stopWindowJob: Job? = null
     private var sensorManager: SensorManager =
@@ -81,6 +89,9 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
             sensorManager.registerListener(shakeListener, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
         startRound(1)
+        viewModelScope.launch {
+            runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
+        }
     }
 
     private fun startRound(round: Int) {
@@ -223,6 +234,7 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
 
         val myResult = state.expressionResult
         val target = state.targetNumber
+        if (myResult == target) mojBrojHitsLocal++
 
         // Simulate opponent result (opponent also plays simultaneously in each round)
         val opponentResult = simulateOpponentResult(target, state.availableNumbers)
@@ -246,9 +258,18 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
                 startRound(2)
             }
         } else {
+            val finalMyScore = _uiState.value.myScore
+            val finalOppScore = _uiState.value.opponentScore
             viewModelScope.launch {
                 delay(2500L)
                 _uiState.value = _uiState.value.copy(phase = MojBrojPhase.GAME_OVER, gameOver = true)
+                if (!resultSaved) {
+                    resultSaved = true
+                    runCatching {
+                        userRepo.saveMojBrojResult(mojBrojHitsLocal, 2)
+                        userRepo.saveGameResult(won = finalMyScore > finalOppScore)
+                    }
+                }
             }
         }
     }

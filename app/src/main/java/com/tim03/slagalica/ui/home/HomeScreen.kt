@@ -13,7 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,7 +26,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.tim03.slagalica.ui.components.MozaikBottomNav
 import com.tim03.slagalica.ui.theme.*
+import com.tim03.slagalica.viewmodel.HomeViewModel
 
 @Composable
 fun HomeScreen(
@@ -36,20 +40,28 @@ fun HomeScreen(
     onSpojniceClick: () -> Unit = {},
     onAsocijacijeClick: () -> Unit = {},
     onSkockoClick: () -> Unit = {},
+    onPartijaClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
-    unreadNotifCount: Int = 0
+    unreadNotifCount: Int = 0,
+    homeViewModel: HomeViewModel = viewModel()
 ) {
+    val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
+
     Scaffold(
         containerColor = Navy,
         topBar = {
             ResourceBar(
+                username = homeState.username,
+                tokens = homeState.tokens,
+                stars = homeState.stars,
+                league = homeState.league,
                 unreadCount = unreadNotifCount,
                 onProfileClick = onProfileClick,
                 onNotificationsClick = onNotificationsClick
             )
         },
-        bottomBar = { MozaikBottomNav(onProfileClick = onProfileClick) }
+        bottomBar = { MozaikBottomNav(selectedIndex = 0, onProfileClick = onProfileClick) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -69,7 +81,28 @@ fun HomeScreen(
                 ModeCard(color = Accent5, icon = "♛", title = "Turnir", sub = "4 igrača · 3 ●", badge = "START 18:00", modifier = Modifier.weight(1f))
             }
 
-            SectionHeader(title = "Igre", modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 10.dp))
+            // Zapocni partiju button
+            Button(
+                onClick = onPartijaClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Gold)
+            ) {
+                Icon(Icons.Default.PlayArrow, null, tint = Navy, modifier = Modifier.size(22.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    "ZAPOČNI PARTIJU",
+                    color = Navy,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.sp,
+                    letterSpacing = 1.sp
+                )
+            }
+
+            SectionHeader(title = "Igre", modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp))
 
             Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -113,13 +146,21 @@ fun HomeScreen(
 
 @Composable
 private fun ResourceBar(
-    tokens: Int = 12,
-    stars: Int = 247,
-    league: String = "Bronza II",
+    username: String = "",
+    tokens: Int = 0,
+    stars: Int = 0,
+    league: Int = 0,
     unreadCount: Int = 0,
     onProfileClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {}
 ) {
+    val leagueLabel = when (league) {
+        0 -> "Početnik"; 1 -> "Bronza"; 2 -> "Srebro"
+        3 -> "Zlato"; 4 -> "Platina"; 5 -> "Dijamant"; else -> "Liga $league"
+    }
+    val initials = username.split("_", " ").filter { it.isNotBlank() }
+        .take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("").ifEmpty { "?" }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -137,7 +178,7 @@ private fun ResourceBar(
                 .clickable { onProfileClick() },
             contentAlignment = Alignment.Center
         ) {
-            Text("IM", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+            Text(initials, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
         }
 
         Row(
@@ -176,7 +217,7 @@ private fun ResourceBar(
 
             Text("◆", color = Accent2, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
             Spacer(Modifier.width(4.dp))
-            Text(league, color = LightGray, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+            Text(leagueLabel, color = LightGray, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
         }
 
         BadgedBox(badge = { if (unreadCount > 0) Badge { Text(unreadCount.toString()) } }) {
@@ -380,42 +421,3 @@ private fun MissionCard(title: String, progress: String, color: Color, done: Boo
     }
 }
 
-// ── Mozaik bottom nav ─────────────────────────────────────────────
-
-@Composable
-private fun MozaikBottomNav(onProfileClick: () -> Unit = {}) {
-    val items = listOf(
-        Triple(Icons.Default.PlayArrow, "Igraj", true),
-        Triple(Icons.Default.Leaderboard, "Rang", false),
-        Triple(Icons.Default.Map, "Mapa", false),
-        Triple(Icons.Default.Group, "Drugari", false),
-        Triple(Icons.Default.Person, "Profil", false),
-    )
-    NavigationBar(containerColor = Navy, tonalElevation = 0.dp) {
-        items.forEachIndexed { i, (icon, label, selected) ->
-            NavigationBarItem(
-                selected = selected,
-                onClick = { if (i == 4) onProfileClick() },
-                icon = {
-                    Box(
-                        modifier = if (selected)
-                            Modifier.clip(RoundedCornerShape(8.dp)).background(PrimaryBlueBright.copy(alpha = 0.16f)).padding(horizontal = 10.dp, vertical = 4.dp)
-                        else
-                            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp))
-                    }
-                },
-                label = { Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = PrimaryBlueBright,
-                    selectedTextColor = PrimaryBlueBright,
-                    unselectedIconColor = MediumGray,
-                    unselectedTextColor = MediumGray,
-                    indicatorColor = Color.Transparent
-                )
-            )
-        }
-    }
-}

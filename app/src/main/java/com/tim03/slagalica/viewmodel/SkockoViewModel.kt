@@ -2,6 +2,7 @@ package com.tim03.slagalica.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tim03.slagalica.data.repository.UserRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,16 +38,26 @@ data class SkockoUiState(
     val message: String? = null
 )
 
-class SkockoViewModel : ViewModel() {
+class SkockoViewModel(
+    private val userRepo: UserRepository = UserRepository()
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SkockoUiState())
     val uiState: StateFlow<SkockoUiState> = _uiState.asStateFlow()
 
+    private val _username = MutableStateFlow("Igrač")
+    val username: StateFlow<String> = _username.asStateFlow()
+
     private var timerJob: Job? = null
     private var opponentJob: Job? = null
+    private var solvedAtAttemptNum: Int? = null
+    private var resultSaved = false
 
     init {
         startGame()
+        viewModelScope.launch {
+            runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
+        }
     }
 
     private fun startGame() {
@@ -118,6 +129,7 @@ class SkockoViewModel : ViewModel() {
 
         if (result.correctPos == 4) {
             timerJob?.cancel()
+            solvedAtAttemptNum = newAttempts.size
             val points = scoreForAttempt(newAttempts.size)
             _uiState.value = state.copy(
                 myAttempts = newAttempts,
@@ -265,6 +277,18 @@ class SkockoViewModel : ViewModel() {
             phase = SkockoPhase.GAME_OVER,
             currentInput = emptyList()
         )
+        if (!resultSaved) {
+            resultSaved = true
+            val attempt = solvedAtAttemptNum
+            val myScore = _uiState.value.myScore
+            val oppScore = _uiState.value.opponentScore
+            viewModelScope.launch {
+                runCatching {
+                    userRepo.saveSkockoResult(attempt, rounds = 1)
+                    userRepo.saveGameResult(won = myScore > oppScore)
+                }
+            }
+        }
     }
 
     private fun checkAttempt(guess: List<Int>, solution: List<Int>): SkockoAttemptResult {

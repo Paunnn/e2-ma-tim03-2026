@@ -1,110 +1,174 @@
 package com.tim03.slagalica.ui.games
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.ui.theme.*
+import com.tim03.slagalica.viewmodel.SpojniceViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.random.Random
 
-private data class SpojniceRound(
-    val criterion: String,
-    val leftItems: List<String>,
-    val rightItems: List<String>,
-    val correctMapping: Map<Int, Int>
-)
+// Phases: Round 1 me first → Round 1 opponent bonus → Round 2 opponent first → Round 2 me bonus → Done
+private enum class SpojnicePhase { R1_ME, R1_OPP, R2_OPP, R2_ME, DONE }
 
-private val mockRounds = listOf(
-    SpojniceRound(
-        criterion = "Povežite izvođača sa pesmom",
-        leftItems = listOf("Zdravko Čolić", "Bijelo Dugme", "Riblja Čorba", "Oliver Dragojević", "Tose Proeski"),
-        rightItems = listOf("Kad bi bio bijelo dugme", "Ako ima Boga", "Galeb i ja", "Ako me pitaš zašto", "Tvoja"),
-        correctMapping = mapOf(0 to 0, 1 to 1, 2 to 2, 3 to 3, 4 to 4)
-    ),
-    SpojniceRound(
-        criterion = "Povežite prestonicu sa državom",
-        leftItems = listOf("Pariz", "Tokio", "Kairo", "Ottawa", "Brasilia"),
-        rightItems = listOf("Kanada", "Egipat", "Francuska", "Japan", "Brazil"),
-        correctMapping = mapOf(0 to 2, 1 to 3, 2 to 1, 3 to 0, 4 to 4)
-    )
-)
+private fun nextPhase(current: SpojnicePhase, allCorrect: Boolean): SpojnicePhase = when (current) {
+    SpojnicePhase.R1_ME  -> if (allCorrect) SpojnicePhase.R2_OPP else SpojnicePhase.R1_OPP
+    SpojnicePhase.R1_OPP -> SpojnicePhase.R2_OPP
+    SpojnicePhase.R2_OPP -> if (allCorrect) SpojnicePhase.DONE   else SpojnicePhase.R2_ME
+    SpojnicePhase.R2_ME  -> SpojnicePhase.DONE
+    SpojnicePhase.DONE   -> SpojnicePhase.DONE
+}
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SpojniceScreen(onExitClick: () -> Unit) {
-    var currentRound by remember { mutableStateOf(0) }
-    var isMyTurn by remember { mutableStateOf(true) }
-    var timeLeft by remember { mutableStateOf(30) }
+fun SpojniceScreen(
+    onExitClick: () -> Unit,
+    isPartijaMode: Boolean = false,
+    onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
+    myScoreOffset: Int = 0,
+    oppScoreOffset: Int = 0,
+    viewModel: SpojniceViewModel = viewModel()
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val username by viewModel.username.collectAsStateWithLifecycle()
+    val rounds = state.rounds
+
     var myScore by remember { mutableStateOf(0) }
     var opponentScore by remember { mutableStateOf(0) }
-
-    var selectedLeft by remember { mutableStateOf<Int?>(null) }
-    var connections by remember { mutableStateOf(mapOf<Int, Int>()) }
-    var wrongConnections by remember { mutableStateOf(mapOf<Int, Int>()) }
-    var showOpponentPhase by remember { mutableStateOf(false) }
+    var timeLeft by remember { mutableStateOf(30) }
     var gameOver by remember { mutableStateOf(false) }
+    var resultSaved by remember { mutableStateOf(false) }
+    var totalConnected by remember { mutableStateOf(0) }
+    var totalPairs by remember { mutableStateOf(0) }
+    var phase by remember { mutableStateOf(SpojnicePhase.R1_ME) }
 
-    LaunchedEffect(currentRound, showOpponentPhase, gameOver) {
-        if (gameOver) return@LaunchedEffect
-        timeLeft = 30
-        while (timeLeft > 0 && !gameOver) {
-            delay(1000L)
-            timeLeft--
+    // Per-round connections (left index → right index); resets each round
+    var connections by remember { mutableStateOf(mapOf<Int, Int>()) }
+    var correctConnections by remember { mutableStateOf(setOf<Int>()) }
+
+    // Queue of left indices to be attempted in current phase
+    var pendingItems by remember { mutableStateOf(listOf<Int>()) }
+    var currentAttemptPos by remember { mutableStateOf(0) }
+
+    // Opponent's currently active left item (for UI highlight)
+    var opponentActiveLeft by remember { mutableStateOf<Int?>(null) }
+
+    // Derived
+    val roundIdx = if (phase == SpojnicePhase.R1_ME || phase == SpojnicePhase.R1_OPP) 0 else 1
+    val isMyTurn = phase == SpojnicePhase.R1_ME || phase == SpojnicePhase.R2_ME
+    val round = rounds.getOrNull(roundIdx)
+    val activeLeftIndex = if (isMyTurn && currentAttemptPos < pendingItems.size) pendingItems[currentAttemptPos] else null
+    val takenRightIndices = correctConnections.mapNotNull { connections[it] }.toSet()
+
+    // Phase flow
+    LaunchedEffect(phase, rounds.size) {
+        if (phase == SpojnicePhase.DONE) {
+            if (!resultSaved) {
+                resultSaved = true
+                viewModel.saveResult(totalConnected, totalPairs, won = myScore > opponentScore)
+            }
+            gameOver = true
+            return@LaunchedEffect
         }
-        if (!gameOver) {
-            if (!showOpponentPhase) {
-                showOpponentPhase = true
-            } else {
-                if (currentRound < mockRounds.size - 1) {
-                    currentRound++
-                    isMyTurn = false
-                    showOpponentPhase = false
-                    connections = emptyMap()
-                    wrongConnections = emptyMap()
-                    selectedLeft = null
-                } else {
-                    gameOver = true
+        if (rounds.isEmpty()) return@LaunchedEffect
+
+        val rIdx = if (phase == SpojnicePhase.R1_ME || phase == SpojnicePhase.R1_OPP) 0 else 1
+        val r = rounds.getOrNull(rIdx) ?: return@LaunchedEffect
+        val isMyPhase = phase == SpojnicePhase.R1_ME || phase == SpojnicePhase.R2_ME
+        val isFirst = phase == SpojnicePhase.R1_ME || phase == SpojnicePhase.R2_OPP
+
+        // Reset connections for round 2
+        if (phase == SpojnicePhase.R2_OPP) {
+            connections = mapOf()
+            correctConnections = setOf()
+        }
+
+        // Items for this phase
+        val items = if (isFirst) (0 until r.leftItems.size).toList()
+                    else (0 until r.leftItems.size).filter { it !in correctConnections }.sorted()
+
+        if (items.isEmpty()) {
+            delay(400L)
+            phase = nextPhase(phase, correctConnections.size >= r.leftItems.size)
+            return@LaunchedEffect
+        }
+
+        pendingItems = items
+        currentAttemptPos = 0
+        timeLeft = 30
+
+        if (!isMyPhase) {
+            // --- OPPONENT TURN ---
+            val timerJob = launch {
+                repeat(30) {
+                    if (gameOver) return@repeat
+                    delay(1000L)
+                    timeLeft = (timeLeft - 1).coerceAtLeast(0)
                 }
             }
+            for (i in items.indices) {
+                if (gameOver || timeLeft <= 0) break
+                val leftIdx = items[i]
+                opponentActiveLeft = leftIdx
+                delay((700L..2600L).random())
+                if (gameOver || timeLeft <= 0) { opponentActiveLeft = null; break }
+
+                val correctRight = r.correctMapping.getOrElse(leftIdx) { 0 }
+                val picks = if (Random.nextFloat() < 0.65f) correctRight
+                            else (0 until r.rightItems.size).filter { it != correctRight }.randomOrNull() ?: correctRight
+                connections = connections + (leftIdx to picks)
+                if (picks == correctRight) {
+                    correctConnections = correctConnections + leftIdx
+                    opponentScore += 2; totalConnected++
+                }
+                totalPairs++
+                currentAttemptPos = i + 1
+                opponentActiveLeft = null
+            }
+            timerJob.cancel()
+            delay(1200L)
+        } else {
+            // --- MY TURN --- (clicks handled by UI; timer runs here)
+            while (timeLeft > 0 && currentAttemptPos < items.size && !gameOver) {
+                delay(1000L)
+                if (!gameOver) timeLeft = (timeLeft - 1).coerceAtLeast(0)
+            }
+            delay(600L)
         }
+
+        phase = nextPhase(phase, correctConnections.size >= r.leftItems.size)
     }
 
-    val round = mockRounds.getOrNull(currentRound)
-    val connectedLeft = connections.keys
-    val connectedRight = connections.values.toSet()
-    val wrongLeft = wrongConnections.keys
-    val usedLeft = connectedLeft + wrongLeft
-    val usedRight = connectedRight
-    val unconnectedCount = 5 - connections.size - wrongConnections.size
-    val timerColor = when {
-        timeLeft > 20 -> TimerGreen
-        timeLeft > 10 -> TimerYellow
-        else -> TimerRed
+    val roundLabel = if (roundIdx == 0) "Runda 1/2" else "Runda 2/2"
+    val phaseLabel = when (phase) {
+        SpojnicePhase.R1_ME  -> "Vaš red — Vi ste prvi"
+        SpojnicePhase.R1_OPP -> "Protivnikov red — preostali pojmovi"
+        SpojnicePhase.R2_OPP -> "Protivnikov red — Protivnik je prvi"
+        SpojnicePhase.R2_ME  -> "Vaš red — preostali pojmovi"
+        SpojnicePhase.DONE   -> "Kraj"
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Navy)
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(Navy)) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
@@ -112,375 +176,286 @@ fun SpojniceScreen(onExitClick: () -> Unit) {
                     gameName = "Spojnice",
                     gameColor = GameSpojnice,
                     gameIcon = "⫶",
-                    round = "${currentRound + 1}/${mockRounds.size} runda",
+                    round = roundLabel,
                     timeLeft = timeLeft,
                     totalTime = 30,
-                    myScore = myScore,
-                    oppScore = opponentScore,
+                    myScore = myScore + myScoreOffset,
+                    oppScore = opponentScore + oppScoreOffset,
+                    myName = username,
                     onExit = onExitClick
                 )
             }
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-            ) {
-                if (gameOver) {
-                    GameOverContent(
-                        myScore = myScore,
-                        opponentScore = opponentScore,
-                        onFinish = onExitClick
-                    )
-                } else {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (round != null) {
-                        CriterionCard(criterion = round.criterion)
-
-                        ScoreChips(
-                            connected = connections.size,
-                            wrong = wrongConnections.size,
-                            total = 5,
-                            roundScore = connections.size * 2
-                        )
-
-                        if (selectedLeft != null) {
-                            SelectionHintCard(leftItem = round.leftItems[selectedLeft!!])
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                when {
+                    state.isLoading -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                CircularProgressIndicator(color = GameSpojnice)
+                                Text("Učitavanje spojnica...", color = LightGray)
+                            }
                         }
-
-                        ConnectingGrid(
-                            leftItems = round.leftItems,
-                            rightItems = round.rightItems,
-                            connections = connections,
-                            wrongConnections = wrongConnections,
-                            selectedLeft = selectedLeft,
-                            usedLeft = usedLeft,
-                            usedRight = usedRight,
-                            enabled = isMyTurn || showOpponentPhase,
-                            onLeftClick = { index ->
-                                if (index !in usedLeft) {
-                                    selectedLeft = if (selectedLeft == index) null else index
-                                }
-                            },
-                            onRightClick = { rightIndex ->
-                                val left = selectedLeft
-                                if (left != null && rightIndex !in usedRight) {
-                                    val isCorrect = round.correctMapping[left] == rightIndex
-                                    if (isCorrect) {
-                                        connections = connections + (left to rightIndex)
-                                        myScore += 2
-                                    } else {
-                                        wrongConnections = wrongConnections + (left to rightIndex)
-                                    }
-                                    selectedLeft = null
+                    }
+                    state.error != null -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Icon(Icons.Default.ErrorOutline, null, tint = ErrorRed, modifier = Modifier.size(48.dp))
+                                Text("Greška pri učitavanju", color = ErrorRed, fontWeight = FontWeight.Bold)
+                                Button(onClick = onExitClick, colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright)) {
+                                    Text("Nazad", color = White)
                                 }
                             }
-                        )
-
-                        if (showOpponentPhase) {
-                            OpponentPhaseBanner(unconnectedCount = unconnectedCount)
                         }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Button(
-                            onClick = {
-                                if (!showOpponentPhase && isMyTurn) {
-                                    showOpponentPhase = true
-                                    timeLeft = 30
-                                } else {
-                                    if (currentRound < mockRounds.size - 1) {
-                                        currentRound++
-                                        isMyTurn = false
-                                        showOpponentPhase = false
-                                        connections = emptyMap()
-                                        wrongConnections = emptyMap()
-                                        selectedLeft = null
-                                        timeLeft = 30
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright)
+                    }
+                    gameOver && !isPartijaMode -> {
+                        GameOverContent(myScore = myScore, opponentScore = opponentScore, onFinish = onExitClick)
+                    }
+                    else -> {
+                        LaunchedEffect(gameOver) {
+                            if (gameOver && isPartijaMode) {
+                                delay(3000L)
+                                onPartijaGameComplete(myScore, opponentScore)
+                            }
+                        }
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            val label = when {
-                                !showOpponentPhase && connections.size < 5 -> "PREDAJ. Protivnik pokušava"
-                                showOpponentPhase || connections.size == 5 -> if (currentRound < mockRounds.size - 1) "SLEDEĆA RUNDA" else "ZAVRŠI"
-                                else -> "DALJE"
+                            // Phase indicator
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isMyTurn) PrimaryBlueBright.copy(alpha = 0.15f) else Accent2.copy(alpha = 0.15f)
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp, if (isMyTurn) PrimaryBlueBright.copy(alpha = 0.5f) else Accent2.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp, 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        if (isMyTurn) Icons.Default.Person else Icons.Default.SmartToy,
+                                        null,
+                                        tint = if (isMyTurn) PrimaryBlueBright else Accent2,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        phaseLabel,
+                                        color = if (isMyTurn) PrimaryBlueBright else Accent2,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                }
                             }
-                            Text(label, fontWeight = FontWeight.Bold, color = White)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.ArrowForward, null, tint = White, modifier = Modifier.size(18.dp))
+
+                            // Criterion
+                            if (round != null) {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = CardDefaults.cardColors(containerColor = NavyCard)
+                                ) {
+                                    Text(
+                                        round.criterion,
+                                        color = White,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp, 10.dp)
+                                    )
+                                }
+
+                                // Columns
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Left column
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            "LEVO", color = MediumGray, fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp,
+                                            modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center
+                                        )
+                                        round.leftItems.forEachIndexed { idx, text ->
+                                            val isActive = isMyTurn && idx == activeLeftIndex
+                                            val isOppActive = !isMyTurn && idx == opponentActiveLeft
+                                            val isCorrect = idx in correctConnections
+                                            val wasAttempted = idx in connections.keys
+                                            val isWrong = wasAttempted && !isCorrect
+                                            LeftItemCard(
+                                                text = text,
+                                                isActive = isActive,
+                                                isOppActive = isOppActive,
+                                                isCorrect = isCorrect,
+                                                isWrong = isWrong
+                                            )
+                                        }
+                                    }
+
+                                    // Right column
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            "DESNO", color = MediumGray, fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp,
+                                            modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center
+                                        )
+                                        round.rightItems.forEachIndexed { idx, text ->
+                                            val isTaken = idx in takenRightIndices
+                                            val isClickable = isMyTurn && activeLeftIndex != null && !isTaken && !gameOver
+                                            RightItemCard(
+                                                text = text,
+                                                isTaken = isTaken,
+                                                isClickable = isClickable,
+                                                isMyTurn = isMyTurn,
+                                                onClick = {
+                                                    val leftIdx = activeLeftIndex ?: return@RightItemCard
+                                                    val correct = round.correctMapping.getOrElse(leftIdx) { -1 }
+                                                    connections = connections + (leftIdx to idx)
+                                                    if (idx == correct) {
+                                                        correctConnections = correctConnections + leftIdx
+                                                        myScore += 2; totalConnected++
+                                                    }
+                                                    totalPairs++
+                                                    currentAttemptPos++
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Hint
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = CardDefaults.cardColors(containerColor = NavyCard),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, LineSoft)
+                                ) {
+                                    Text(
+                                        "2 boda za svaki tačno povezan par · max 10 po rundi",
+                                        color = MediumGray, fontSize = 11.sp, textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth().padding(8.dp, 6.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-                }
             }
         }
     }
 }
 
 @Composable
-private fun CriterionCard(criterion: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = PrimaryBlue.copy(alpha = 0.15f)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryBlue.copy(alpha = 0.4f))
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Icon(Icons.Default.Link, null, tint = PrimaryBlueLight, modifier = Modifier.size(20.dp))
-            Text(
-                criterion,
-                color = White,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
-}
-
-@Composable
-private fun ScoreChips(connected: Int, wrong: Int, total: Int, roundScore: Int) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Surface(shape = RoundedCornerShape(20.dp), color = SuccessGreen.copy(alpha = 0.15f), modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("$connected / $total tačno", color = SuccessGreen, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-            }
-        }
-        if (wrong > 0) {
-            Surface(shape = RoundedCornerShape(20.dp), color = ErrorRed.copy(alpha = 0.15f), modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(Icons.Default.Cancel, null, tint = ErrorRed, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("$wrong promašeno", color = ErrorRed, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                }
-            }
-        } else {
-            Surface(shape = RoundedCornerShape(20.dp), color = Gold.copy(alpha = 0.15f), modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("+$roundScore bodova", color = Gold, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SelectionHintCard(leftItem: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.12f)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.5f))
-    ) {
-        Row(
-            modifier = Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(Icons.Default.TouchApp, null, tint = Gold, modifier = Modifier.size(16.dp))
-            Text(
-                "Odabrano: \"$leftItem\" , izaberite pojam sa desne strane",
-                color = Gold,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-    }
-}
-
-
-@Composable
-private fun ConnectingGrid(
-    leftItems: List<String>,
-    rightItems: List<String>,
-    connections: Map<Int, Int>,
-    wrongConnections: Map<Int, Int>,
-    selectedLeft: Int?,
-    usedLeft: Set<Int>,
-    usedRight: Set<Int>,
-    enabled: Boolean,
-    onLeftClick: (Int) -> Unit,
-    onRightClick: (Int) -> Unit
-) {
-    val indexLetters = listOf("A", "B", "C", "D", "E")
-    val wrongLeft = wrongConnections.keys
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            leftItems.forEachIndexed { index, item ->
-                val isCorrect = index in connections.keys
-                val isWrong = index in wrongLeft
-                val isSelected = selectedLeft == index
-
-                ConnectItemCard(
-                    text = item,
-                    badge = "${index + 1}",
-                    isCorrect = isCorrect,
-                    isWrong = isWrong,
-                    isSelected = isSelected,
-                    enabled = enabled && index !in usedLeft,
-                    side = CardSide.LEFT,
-                    onClick = { onLeftClick(index) }
-                )
-            }
-        }
-
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            rightItems.forEachIndexed { index, item ->
-                val isCorrect = index in connections.values
-
-                ConnectItemCard(
-                    text = item,
-                    badge = indexLetters[index],
-                    isCorrect = isCorrect,
-                    isWrong = false,
-                    isSelected = false,
-                    enabled = enabled && index !in usedRight && selectedLeft != null,
-                    side = CardSide.RIGHT,
-                    onClick = { onRightClick(index) }
-                )
-            }
-        }
-    }
-}
-
-private enum class CardSide { LEFT, RIGHT }
-
-@Composable
-private fun ConnectItemCard(
+private fun LeftItemCard(
     text: String,
-    badge: String,
+    isActive: Boolean,
+    isOppActive: Boolean,
     isCorrect: Boolean,
-    isWrong: Boolean,
-    isSelected: Boolean,
-    enabled: Boolean,
-    side: CardSide,
-    onClick: () -> Unit
+    isWrong: Boolean
 ) {
     val bgColor = when {
-        isCorrect -> SuccessGreen.copy(alpha = 0.15f)
-        isWrong -> ErrorRed.copy(alpha = 0.15f)
-        isSelected -> Gold.copy(alpha = 0.15f)
+        isCorrect -> SuccessGreen.copy(alpha = 0.2f)
+        isActive -> PrimaryBlueBright.copy(alpha = 0.18f)
+        isOppActive -> Accent2.copy(alpha = 0.18f)
+        isWrong -> ErrorRed.copy(alpha = 0.2f)
         else -> NavyCard
     }
     val borderColor = when {
-        isCorrect -> SuccessGreen.copy(alpha = 0.7f)
-        isWrong -> ErrorRed.copy(alpha = 0.6f)
-        isSelected -> Gold
-        else -> MediumGray.copy(alpha = 0.3f)
-    }
-    val badgeBg = when {
         isCorrect -> SuccessGreen
+        isActive -> PrimaryBlueBright
+        isOppActive -> Accent2
         isWrong -> ErrorRed
-        isSelected -> Gold
-        else -> if (side == CardSide.LEFT) PrimaryBlue else NavyCardLight
+        else -> LineSoft
     }
+    val borderWidth = if (isActive || isOppActive || isCorrect || isWrong) 2.dp else 1.dp
     val textColor = when {
         isCorrect -> SuccessGreen
+        isActive -> White
+        isOppActive -> Accent2
         isWrong -> ErrorRed
-        isSelected -> Gold
-        !enabled -> MediumGray
-        else -> White
+        else -> LightGray
     }
+    val alpha = if (!isCorrect && !isWrong && !isActive && !isOppActive) 0.6f else 1f
 
-    Card(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = bgColor),
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, borderColor)
+            .height(44.dp)
+            .alpha(alpha)
+            .clip(RoundedCornerShape(10.dp))
+            .background(bgColor)
+            .border(borderWidth, borderColor, RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .background(badgeBg),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isWrong) {
-                        Icon(Icons.Default.Close, null, tint = White, modifier = Modifier.size(12.dp))
-                    } else {
-                        Text(badge, color = White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                    }
-                }
-                Text(
-                    text,
-                    color = textColor,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = if (isSelected || isCorrect || isWrong) FontWeight.SemiBold else FontWeight.Normal,
-                    maxLines = 2
-                )
-            }
+        val icon = when {
+            isCorrect -> Icons.Default.CheckCircle
+            isActive || isOppActive -> Icons.AutoMirrored.Filled.ArrowForward
+            isWrong -> Icons.Default.Cancel
+            else -> null
         }
+        if (icon != null) {
+            Icon(icon, null, tint = borderColor, modifier = Modifier.size(14.dp))
+        }
+        Text(text, color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, modifier = Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun OpponentPhaseBanner(unconnectedCount: Int) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = WarningOrange.copy(alpha = 0.12f)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, WarningOrange.copy(alpha = 0.5f))
+private fun RightItemCard(
+    text: String,
+    isTaken: Boolean,
+    isClickable: Boolean,
+    isMyTurn: Boolean,
+    onClick: () -> Unit
+) {
+    val bgColor = when {
+        isTaken -> SuccessGreen.copy(alpha = 0.15f)
+        isClickable -> NavyCardLight
+        else -> NavyCard
+    }
+    val borderColor = when {
+        isTaken -> SuccessGreen
+        isClickable -> GameSpojnice.copy(alpha = 0.7f)
+        else -> LineSoft
+    }
+    val textColor = when {
+        isTaken -> SuccessGreen
+        isClickable -> White
+        else -> MediumGray
+    }
+    val alpha = if (!isTaken && !isClickable && isMyTurn) 0.5f else 1f
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .alpha(alpha)
+            .clip(RoundedCornerShape(10.dp))
+            .background(bgColor)
+            .border(if (isTaken || isClickable) 2.dp else 1.dp, borderColor, RoundedCornerShape(10.dp))
+            .then(if (isClickable) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(Icons.Default.Info, null, tint = WarningOrange, modifier = Modifier.size(18.dp))
-            Column {
-                Text(
-                    "Protivnik nije završio!",
-                    color = WarningOrange,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    "Imate 30s da povežete preostalih $unconnectedCount pojmova.",
-                    color = WarningOrange.copy(alpha = 0.8f),
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
+        Text(text, color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, modifier = Modifier.weight(1f))
+        if (isTaken) {
+            Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(14.dp))
+        } else if (isClickable) {
+            Icon(Icons.Default.RadioButtonUnchecked, null, tint = GameSpojnice.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
         }
     }
 }

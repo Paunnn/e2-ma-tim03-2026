@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tim03.slagalica.data.model.KorakPoKorakQuestion
 import com.tim03.slagalica.data.repository.KorakPoKorakRepository
+import com.tim03.slagalica.data.repository.UserRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,19 +34,28 @@ data class KorakPoKorakUiState(
 )
 
 class KorakPoKorakViewModel(
-    private val repo: KorakPoKorakRepository = KorakPoKorakRepository()
+    private val repo: KorakPoKorakRepository = KorakPoKorakRepository(),
+    private val userRepo: UserRepository = UserRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(KorakPoKorakUiState())
     val uiState: StateFlow<KorakPoKorakUiState> = _uiState.asStateFlow()
 
+    private val _username = MutableStateFlow("Igrač")
+    val username: StateFlow<String> = _username.asStateFlow()
+
     private var timerJob: Job? = null
     private var opponentJob: Job? = null
     private var currentQuestion: KorakPoKorakQuestion? = null
     private var round2Question: KorakPoKorakQuestion? = null
+    private var myCorrectStep: Int? = null
+    private var resultSaved = false
 
     init {
         loadGame()
+        viewModelScope.launch {
+            runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
+        }
     }
 
     private fun loadGame() {
@@ -99,6 +109,7 @@ class KorakPoKorakViewModel(
         timerJob?.cancel()
         val correct = answer.trim().equals(currentQuestion?.answer?.trim(), ignoreCase = true)
         if (correct) {
+            myCorrectStep = _uiState.value.revealedSteps
             val points = (20 - (_uiState.value.revealedSteps - 1) * 2).coerceAtLeast(8)
             _uiState.value = _uiState.value.copy(
                 myScore = _uiState.value.myScore + points,
@@ -262,6 +273,18 @@ class KorakPoKorakViewModel(
         timerJob?.cancel()
         opponentJob?.cancel()
         _uiState.value = _uiState.value.copy(phase = KorakPoKorakPhase.GAME_OVER)
+        if (!resultSaved) {
+            resultSaved = true
+            val step = myCorrectStep
+            val myScore = _uiState.value.myScore
+            val oppScore = _uiState.value.opponentScore
+            viewModelScope.launch {
+                runCatching {
+                    userRepo.saveKorakPoKorakResult(step)
+                    userRepo.saveGameResult(won = myScore > oppScore)
+                }
+            }
+        }
     }
 
     override fun onCleared() {

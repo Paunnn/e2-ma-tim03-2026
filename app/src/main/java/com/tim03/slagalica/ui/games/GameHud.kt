@@ -40,8 +40,11 @@ fun GameHud(
     totalTime: Int,
     myScore: Int,
     oppScore: Int,
+    myName: String = "Igrač",
     onExit: () -> Unit = {}
 ) {
+    val myInitials = myName.split("_", " ").filter { it.isNotBlank() }
+        .take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("").ifEmpty { "?" }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -104,11 +107,11 @@ fun GameHud(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("IM", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 8.sp)
+                        Text(myInitials, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 8.sp)
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "ivana_m (ti)", color = MediumGray, fontSize = 11.sp,
+                            "$myName (ti)", color = MediumGray, fontSize = 11.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis
                         )
                         Text(

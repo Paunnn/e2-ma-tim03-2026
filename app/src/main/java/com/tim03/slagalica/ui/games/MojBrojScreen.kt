@@ -34,14 +34,20 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.MojBrojPhase
 import com.tim03.slagalica.viewmodel.MojBrojViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MojBrojScreen(
     onExitClick: () -> Unit,
+    isPartijaMode: Boolean = false,
+    onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
+    myScoreOffset: Int = 0,
+    oppScoreOffset: Int = 0,
     viewModel: MojBrojViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val username by viewModel.username.collectAsStateWithLifecycle()
 
     val timerColor = when {
         state.timeLeft > 30 -> TimerGreen
@@ -60,14 +66,21 @@ fun MojBrojScreen(
                     round = "${state.currentRound}/2 runda",
                     timeLeft = state.timeLeft,
                     totalTime = 60,
-                    myScore = state.myScore,
-                    oppScore = state.opponentScore,
+                    myScore = state.myScore + myScoreOffset,
+                    oppScore = state.opponentScore + oppScoreOffset,
+                    myName = username,
                     onExit = onExitClick
                 )
             }
         ) { padding ->
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                if (state.gameOver) {
+                LaunchedEffect(state.gameOver) {
+                    if (state.gameOver && isPartijaMode) {
+                        delay(3000L)
+                        onPartijaGameComplete(state.myScore, state.opponentScore)
+                    }
+                }
+                if (state.gameOver && !isPartijaMode) {
                     GameOverContent(myScore = state.myScore, opponentScore = state.opponentScore, onFinish = onExitClick)
                 } else {
                     // Round result message

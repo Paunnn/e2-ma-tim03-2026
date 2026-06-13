@@ -11,6 +11,7 @@ import com.tim03.slagalica.ui.auth.ChangePasswordScreen
 import com.tim03.slagalica.ui.auth.LoginScreen
 import com.tim03.slagalica.ui.auth.RegisterScreen
 import com.tim03.slagalica.ui.games.AsocijacijeScreen
+import com.tim03.slagalica.ui.partija.PartijaScreen
 import com.tim03.slagalica.ui.games.KorakPoKorakScreen
 import com.tim03.slagalica.ui.games.KoZnaZnaScreen
 import com.tim03.slagalica.ui.games.MojBrojScreen
@@ -63,10 +64,15 @@ fun AppNavigation(navController: NavHostController) {
                 onSpojniceClick = { navController.navigate(Screen.Spojnice.route) },
                 onAsocijacijeClick = { navController.navigate(Screen.Asocijacije.route) },
                 onSkockoClick = { navController.navigate(Screen.Skocko.route) },
+                onPartijaClick = { navController.navigate(Screen.Partija.route) },
                 onProfileClick = { navController.navigate(Screen.Profile.route) },
                 onNotificationsClick = { navController.navigate(Screen.Notifications.route) },
                 unreadNotifCount = unreadCount
             )
+        }
+
+        composable(Screen.Partija.route) {
+            PartijaScreen(onExit = { navController.popBackStack() })
         }
 
         composable(Screen.Profile.route) {

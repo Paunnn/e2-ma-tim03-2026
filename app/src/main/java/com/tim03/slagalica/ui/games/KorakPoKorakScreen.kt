@@ -29,14 +29,20 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.KorakPoKorakPhase
 import com.tim03.slagalica.viewmodel.KorakPoKorakViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KorakPoKorakScreen(
     onExitClick: () -> Unit,
+    isPartijaMode: Boolean = false,
+    onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
+    myScoreOffset: Int = 0,
+    oppScoreOffset: Int = 0,
     viewModel: KorakPoKorakViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val username by viewModel.username.collectAsStateWithLifecycle()
     var answer by remember { mutableStateOf("") }
 
     val timerColor = when {
@@ -57,8 +63,9 @@ fun KorakPoKorakScreen(
                     round = "${state.currentRound}/2 runda",
                     timeLeft = state.timeLeft,
                     totalTime = totalTime,
-                    myScore = state.myScore,
-                    oppScore = state.opponentScore,
+                    myScore = state.myScore + myScoreOffset,
+                    oppScore = state.opponentScore + oppScoreOffset,
+                    myName = username,
                     onExit = onExitClick
                 )
             }
@@ -74,10 +81,16 @@ fun KorakPoKorakScreen(
                             }
                         }
                     }
-                    state.phase == KorakPoKorakPhase.GAME_OVER -> {
+                    state.phase == KorakPoKorakPhase.GAME_OVER && !isPartijaMode -> {
                         GameOverContent(myScore = state.myScore, opponentScore = state.opponentScore, onFinish = onExitClick)
                     }
                     else -> {
+                        LaunchedEffect(state.phase == KorakPoKorakPhase.GAME_OVER) {
+                            if (state.phase == KorakPoKorakPhase.GAME_OVER && isPartijaMode) {
+                                delay(3000L)
+                                onPartijaGameComplete(state.myScore, state.opponentScore)
+                            }
+                        }
                         // Result message
                         state.lastResultMessage?.let { msg ->
                             Card(

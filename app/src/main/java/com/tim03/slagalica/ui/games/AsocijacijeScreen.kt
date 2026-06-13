@@ -37,9 +37,20 @@ private val columnColors = listOf(
 @Composable
 fun AsocijacijeScreen(
     onExitClick: () -> Unit,
+    isPartijaMode: Boolean = false,
+    onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
+    myScoreOffset: Int = 0,
+    oppScoreOffset: Int = 0,
     viewModel: AsocijacijeViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(state.phase) {
+        if (state.phase == AsocijacijePhase.GAME_OVER && isPartijaMode) {
+            kotlinx.coroutines.delay(3000L)
+            onPartijaGameComplete(state.myScore, state.opponentScore)
+        }
+    }
     var answerText by remember { mutableStateOf("") }
     var guessMode by remember { mutableStateOf<GuessMode>(GuessMode.None) }
 
@@ -66,8 +77,8 @@ fun AsocijacijeScreen(
                 round = "${state.currentRound}/2 runda",
                 timeLeft = state.timeLeft,
                 totalTime = 120,
-                myScore = state.myScore,
-                oppScore = state.opponentScore,
+                myScore = state.myScore + myScoreOffset,
+                oppScore = state.opponentScore + oppScoreOffset,
                 onExit = onExitClick
             )
         }
@@ -197,7 +208,7 @@ fun AsocijacijeScreen(
                         }
                     }
 
-                    if (state.phase == AsocijacijePhase.GAME_OVER) {
+                    if (state.phase == AsocijacijePhase.GAME_OVER && !isPartijaMode) {
                         Spacer(modifier = Modifier.height(8.dp))
                         AsocijacijeResultCard(state.myScore, state.opponentScore)
                     }

@@ -1,7 +1,9 @@
 package com.tim03.slagalica.ui.profile
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -16,23 +18,56 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.tim03.slagalica.data.model.User
+import com.tim03.slagalica.ui.components.MozaikBottomNav
 import com.tim03.slagalica.ui.theme.*
+import com.tim03.slagalica.util.QrCodeUtils
+import com.tim03.slagalica.viewmodel.ProfileViewModel
+
+private val avatarIcons = listOf(
+    Icons.Default.Person,
+    Icons.Default.Face,
+    Icons.Default.SportsEsports,
+    Icons.Default.Star,
+    Icons.Default.EmojiEvents,
+    Icons.Default.Psychology
+)
+
+private fun leagueName(league: Int) = when (league) {
+    0 -> "Bronza"
+    1 -> "Srebro"
+    2 -> "Zlato"
+    3 -> "Dijamant"
+    4 -> "Majstor"
+    else -> "Liga $league"
+}
+
+private fun leagueColor(league: Int) = when (league) {
+    0 -> Color(0xFFCD7F32)
+    1 -> Color(0xFFC0C0C0)
+    2 -> Color(0xFFFFc857)
+    3 -> Color(0xFF4F7CFF)
+    4 -> Color(0xFFC599FF)
+    else -> Color(0xFFFFc857)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     onNavigateHome: () -> Unit = {},
-    onNavigateRanking: () -> Unit = {},
-    onNavigateFriends: () -> Unit = {},
-    onNavigateChat: () -> Unit = {},
     onLogout: () -> Unit = {},
-    onChangePassword: () -> Unit = {}
+    onChangePassword: () -> Unit = {},
+    viewModel: ProfileViewModel = viewModel()
 ) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showAvatarDialog by remember { mutableStateOf(false) }
 
@@ -40,13 +75,21 @@ fun ProfileScreen(
         LogoutDialog(
             onConfirm = {
                 showLogoutDialog = false
+                viewModel.logout()
                 onLogout()
             },
             onDismiss = { showLogoutDialog = false }
         )
     }
     if (showAvatarDialog) {
-        AvatarPickerDialog(onDismiss = { showAvatarDialog = false })
+        AvatarPickerDialog(
+            currentIndex = state.user?.avatarIndex ?: 0,
+            onSelect = { index ->
+                viewModel.updateAvatar(index)
+                showAvatarDialog = false
+            },
+            onDismiss = { showAvatarDialog = false }
+        )
     }
 
     Scaffold(
@@ -57,24 +100,27 @@ fun ProfileScreen(
                     Text("PROFIL", fontWeight = FontWeight.ExtraBold, color = White, letterSpacing = 2.sp)
                 },
                 actions = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(end = 12.dp)
-                    ) {
-                        Icon(Icons.Default.Token, null, tint = GoldLight, modifier = Modifier.size(18.dp))
-                        Text("5", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(18.dp))
-                        Text("142", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Surface(shape = RoundedCornerShape(8.dp), color = NavyCard) {
-                            Text(
-                                "Liga 2",
-                                color = GoldLight,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                    if (!state.isLoading && state.user != null) {
+                        val user = state.user!!
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(end = 12.dp)
+                        ) {
+                            Icon(Icons.Default.Token, null, tint = GoldLight, modifier = Modifier.size(18.dp))
+                            Text("${user.tokens}", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(18.dp))
+                            Text("${user.stars}", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(shape = RoundedCornerShape(8.dp), color = NavyCard) {
+                                Text(
+                                    leagueName(user.league),
+                                    color = leagueColor(user.league),
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
                 },
@@ -82,34 +128,47 @@ fun ProfileScreen(
             )
         },
         bottomBar = {
-            BottomNavBar(
-                onHomeClick = onNavigateHome,
-                onRankingClick = onNavigateRanking,
-                onFriendsClick = onNavigateFriends,
-                onChatClick = onNavigateChat
-            )
+            MozaikBottomNav(selectedIndex = 4, onHomeClick = onNavigateHome)
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-        ) {
-            ProfileHeaderSection(onEditAvatarClick = { showAvatarDialog = true })
-            Spacer(modifier = Modifier.height(16.dp))
-            StatisticsSection()
-            Spacer(modifier = Modifier.height(16.dp))
-            ChangePasswordButton(onClick = onChangePassword)
-            Spacer(modifier = Modifier.height(8.dp))
-            LogoutButton(onClick = { showLogoutDialog = true })
-            Spacer(modifier = Modifier.height(24.dp))
+        when {
+            state.isLoading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CircularProgressIndicator(color = PrimaryBlueBright)
+                        Text("Učitavanje profila...", color = LightGray)
+                    }
+                }
+            }
+            else -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    ProfileHeaderSection(
+                        user = state.user,
+                        onEditAvatarClick = { showAvatarDialog = true }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    StatisticsSection(user = state.user)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    ChangePasswordButton(onClick = onChangePassword)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LogoutButton(onClick = { showLogoutDialog = true })
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ProfileHeaderSection(onEditAvatarClick: () -> Unit) {
+private fun ProfileHeaderSection(user: User?, onEditAvatarClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -126,42 +185,87 @@ private fun ProfileHeaderSection(onEditAvatarClick: () -> Unit) {
                         .background(PrimaryBlue),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Person, null, tint = White, modifier = Modifier.size(56.dp))
+                    val iconIndex = user?.avatarIndex?.coerceIn(0, avatarIcons.size - 1) ?: 0
+                    Icon(avatarIcons[iconIndex], null, tint = White, modifier = Modifier.size(56.dp))
                 }
                 IconButton(
                     onClick = onEditAvatarClick,
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(NavyCard)
-                        .border(1.dp, MediumGray, CircleShape)
+                    modifier = Modifier.size(30.dp).clip(CircleShape).background(NavyCard).border(1.dp, MediumGray, CircleShape)
                 ) {
                     Icon(Icons.Default.Edit, null, tint = LightGray, modifier = Modifier.size(16.dp))
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            Text("Igrač1", color = White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-            Text("igrac1@email.com", color = LightGray, style = MaterialTheme.typography.bodySmall)
+            Text(user?.username ?: "Gost", color = White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+            Text(user?.email ?: "", color = LightGray, style = MaterialTheme.typography.bodySmall)
 
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfoChip(icon = Icons.Default.LocationOn, label = "Vojvodina", color = PrimaryBlueLight)
-                InfoChip(icon = Icons.Default.EmojiEvents, label = "Liga 2", color = Gold)
+                if (!user?.region.isNullOrBlank()) {
+                    InfoChip(icon = Icons.Default.LocationOn, label = user!!.region, color = PrimaryBlueLight)
+                }
+                InfoChip(
+                    icon = Icons.Default.EmojiEvents,
+                    label = leagueName(user?.league ?: 0),
+                    color = leagueColor(user?.league ?: 0)
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                StatSummaryItem(value = "${user?.tokens ?: 0}", label = "Tokeni", icon = Icons.Default.Token, color = GoldLight)
+                StatSummaryItem(value = "${user?.stars ?: 0}", label = "Zvezde", icon = Icons.Default.Star, color = Gold)
+                val totalRounds = (user?.koZnaZnaRounds ?: 0) + (user?.spojniceRounds ?: 0) +
+                (user?.mojBrojRounds ?: 0) + (user?.korakRounds ?: 0) + (user?.skockoRounds ?: 0)
+                StatSummaryItem(value = "$totalRounds", label = "Rundi", icon = Icons.Default.Games, color = PrimaryBlueLight)
+            }
+
+            if (user != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                RealQrCodeCard(uid = user.uid)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RealQrCodeCard(uid: String) {
+    val qrBitmap = remember(uid) {
+        if (uid.isNotBlank()) QrCodeUtils.generateQrCode(uid).asImageBitmap() else null
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = NavyCard)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier.size(72.dp).clip(RoundedCornerShape(8.dp)).background(White),
+                contentAlignment = Alignment.Center
             ) {
-                StatSummaryItem(value = "5", label = "Tokeni", icon = Icons.Default.Token, color = GoldLight)
-                StatSummaryItem(value = "142", label = "Zvezde", icon = Icons.Default.Star, color = Gold)
-                StatSummaryItem(value = "38", label = "Partija", icon = Icons.Default.Games, color = PrimaryBlueLight)
+                if (qrBitmap != null) {
+                    Image(
+                        bitmap = qrBitmap,
+                        contentDescription = "QR kod",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(Icons.Default.QrCode2, null, tint = DarkGray, modifier = Modifier.size(48.dp))
+                }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            QrCodeCard()
+            Column {
+                Text("Moj QR kod", color = White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    "Prijatelji skeniraju ovaj kod da vas dodaju u listu prijatelja.",
+                    color = LightGray, style = MaterialTheme.typography.bodySmall
+                )
+            }
         }
     }
 }
@@ -191,55 +295,37 @@ private fun StatSummaryItem(value: String, label: String, icon: ImageVector, col
 }
 
 @Composable
-private fun QrCodeCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = NavyCard)
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(White)
-                    .padding(6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                QrCodePlaceholder()
-            }
-            Column {
-                Text("Moj QR kod", color = White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    "Prijatelji skeniraju ovaj kod da vas dodaju u listu prijatelja.",
-                    color = LightGray,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-        }
-    }
-}
+private fun StatisticsSection(user: User?) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Text("Statistika", color = White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(12.dp))
 
-@Composable
-private fun QrCodePlaceholder() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            repeat(5) { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    repeat(5) { col ->
-                        val filled = (row == 0 || row == 4 || col == 0 || col == 4 ||
-                                (row == 1 && col == 1) || (row == 2 && col == 2) || (row == 3 && col == 3))
-                        Box(
-                            modifier = Modifier
-                                .size(9.dp)
-                                .background(if (filled) Color.Black else Color.Transparent)
-                        )
-                    }
+        Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = NavyCard)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                OverallStatsRow(user = user)
+                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
+                GameStatItem(title = "Ko zna zna", icon = Icons.Default.Quiz, iconColor = GameKoZnaZna) {
+                    KoZnaZnaStats(user = user)
+                }
+                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
+                GameStatItem(title = "Spojnice", icon = Icons.Default.Link, iconColor = GameSpojnice) {
+                    SpojniceStats(user = user)
+                }
+                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
+                GameStatItem(title = "Moj broj", icon = Icons.Default.Calculate, iconColor = GameMojBroj) {
+                    MojBrojStats(user = user)
+                }
+                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
+                GameStatItem(title = "Korak po korak", icon = Icons.Default.Stairs, iconColor = GameKorak) {
+                    KorakPoKorakStats(user = user)
+                }
+                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
+                GameStatItem(title = "Asocijacije", icon = Icons.Default.GridView, iconColor = GameAsocijacije) {
+                    AsocijacijeStats(user = user)
+                }
+                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
+                GameStatItem(title = "Skočko", icon = Icons.Default.Casino, iconColor = GameSkocko) {
+                    SkockoStats(user = user)
                 }
             }
         }
@@ -247,71 +333,28 @@ private fun QrCodePlaceholder() {
 }
 
 @Composable
-private fun StatisticsSection() {
-    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-        Text("Statistika", color = White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(12.dp))
+private fun OverallStatsRow(user: User?) {
+    val partijaWon = user?.partijaWon ?: 0
+    val partijaLost = user?.partijaLost ?: 0
+    val partijaDrawn = user?.partijaDrawn ?: 0
+    val totalPartija = partijaWon + partijaLost + partijaDrawn
+    val winRatio = if (totalPartija > 0) partijaWon.toFloat() / totalPartija else 0f
+    val lossRatio = if (totalPartija > 0) partijaLost.toFloat() / totalPartija else 0f
 
-        Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = NavyCard)) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                OverallStatsRow()
-                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
-                GameStatItem(
-                    title = "Ko zna zna",
-                    icon = Icons.Default.Quiz,
-                    iconColor = SuccessGreen,
-                    content = { KoZnaZnaStats() }
-                )
-                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
-                GameStatItem(
-                    title = "Spojnice",
-                    icon = Icons.Default.Link,
-                    iconColor = PrimaryBlueLight,
-                    content = { SpojniceStats() }
-                )
-                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
-                GameStatItem(
-                    title = "Moj broj",
-                    icon = Icons.Default.Calculate,
-                    iconColor = Gold,
-                    content = { MojBrojStats() }
-                )
-                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
-                GameStatItem(
-                    title = "Korak po korak",
-                    icon = Icons.Default.Stairs,
-                    iconColor = WarningOrange,
-                    content = { KorakPoKorakStats() }
-                )
-                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
-                GameStatItem(
-                    title = "Asocijacije",
-                    icon = Icons.Default.GridView,
-                    iconColor = GoldLight,
-                    content = { AsocijacijeStats() }
-                )
-                HorizontalDivider(color = MediumGray.copy(alpha = 0.3f))
-                GameStatItem(
-                    title = "Skočko",
-                    icon = Icons.Default.Casino,
-                    iconColor = ErrorRed,
-                    content = { SkockoStats() }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun OverallStatsRow() {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Opšta statistika", color = LightGray, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            MiniStatBox("38", "Ukupno partija")
-            MiniStatBox("62%", "Pobede")
-            MiniStatBox("38%", "Porazi")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            MiniStatBox("$totalPartija", "Partija")
+            MiniStatBox("$partijaWon", "Pobede")
+            MiniStatBox("$partijaLost", "Porazi")
+            if (partijaDrawn > 0) MiniStatBox("$partijaDrawn", "Nerešeno")
         }
-        LabeledProgressBar(label = "Pobede", value = 0.62f, color = SuccessGreen)
+        if (totalPartija > 0) {
+            LabeledProgressBar(label = "Pobede", value = winRatio, color = SuccessGreen)
+            LabeledProgressBar(label = "Porazi", value = lossRatio, color = ErrorRed)
+        } else {
+            Text("Nema odigranih partija. Kliknite 'Započni partiju' na početnoj strani.", color = MediumGray, style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
@@ -327,15 +370,9 @@ private fun MiniStatBox(value: String, label: String) {
 private fun GameStatItem(title: String, icon: ImageVector, iconColor: Color, content: @Composable () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(iconColor.copy(alpha = 0.15f)),
+                modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(iconColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(icon, null, tint = iconColor, modifier = Modifier.size(18.dp))
@@ -345,9 +382,7 @@ private fun GameStatItem(title: String, icon: ImageVector, iconColor: Color, con
             IconButton(onClick = { expanded = !expanded }, modifier = Modifier.size(24.dp)) {
                 Icon(
                     if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    null,
-                    tint = LightGray,
-                    modifier = Modifier.size(20.dp)
+                    null, tint = LightGray, modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -359,61 +394,104 @@ private fun GameStatItem(title: String, icon: ImageVector, iconColor: Color, con
 }
 
 @Composable
-private fun KoZnaZnaStats() {
+private fun KoZnaZnaStats(user: User?) {
+    val correct = user?.koZnaZnaCorrect ?: 0
+    val incorrect = user?.koZnaZnaIncorrect ?: 0
+    val rounds = user?.koZnaZnaRounds ?: 0
+    val total = correct + incorrect
+    val correctRatio = if (total > 0) correct.toFloat() / total else 0f
+    val incorrectRatio = if (total > 0) incorrect.toFloat() / total else 0f
+
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Prosečni bodovi: 15–35 bod./rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
-        LabeledProgressBar(label = "Tačni odgovori", value = 0.68f, color = SuccessGreen)
-        LabeledProgressBar(label = "Netačni odgovori", value = 0.22f, color = ErrorRed)
-        Text("Bez odgovora: 10%", color = MediumGray, style = MaterialTheme.typography.labelSmall)
+        Text("Odigrane runde: $rounds  ·  Tačno: $correct  ·  Netačno: $incorrect", color = LightGray, style = MaterialTheme.typography.bodySmall)
+        LabeledProgressBar(label = "Tačni odgovori", value = correctRatio, color = SuccessGreen)
+        LabeledProgressBar(label = "Netačni odgovori", value = incorrectRatio, color = ErrorRed)
     }
 }
 
 @Composable
-private fun SpojniceStats() {
+private fun SpojniceStats(user: User?) {
+    val connected = user?.spojniceConnected ?: 0
+    val totalPairs = user?.spojniceTotalPairs ?: 0
+    val rounds = user?.spojniceRounds ?: 0
+    val connectedRatio = if (totalPairs > 0) connected.toFloat() / totalPairs else 0f
+
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Prosečni bodovi: 6–14 bod./rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
-        LabeledProgressBar(label = "Uspešno povezani pojmovi", value = 0.74f, color = PrimaryBlueLight)
+        Text("Odigrane runde: $rounds  ·  Tačno: $connected / $totalPairs parova", color = LightGray, style = MaterialTheme.typography.bodySmall)
+        LabeledProgressBar(label = "Uspešno povezani pojmovi", value = connectedRatio, color = GameSpojnice)
     }
 }
 
 @Composable
-private fun MojBrojStats() {
+private fun MojBrojStats(user: User?) {
+    val hits = user?.mojBrojHits ?: 0
+    val rounds = user?.mojBrojRounds ?: 0
+    if (rounds == 0) {
+        Text("Nema odigranih rundi.", color = MediumGray, style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    val ratio = hits.toFloat() / rounds
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Prosečni bodovi: 5–10 bod./rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
-        LabeledProgressBar(label = "Pronađen tačan broj", value = 0.55f, color = Gold)
+        Text("Tačan pogodak: $hits / $rounds rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
+        LabeledProgressBar(label = "Pronađen tačan broj", value = ratio, color = GameMojBroj)
     }
 }
 
 @Composable
-private fun KorakPoKorakStats() {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Prosečni bodovi: 8–16 bod./rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
-        val stepLabels = listOf("Korak 1", "Korak 2", "Korak 3", "Korak 4", "Korak 5", "Korak 6", "Korak 7")
-        val stepValues = listOf(0.05f, 0.12f, 0.20f, 0.35f, 0.50f, 0.65f, 0.80f)
-        stepLabels.zip(stepValues).forEach { (label, value) ->
-            LabeledProgressBar(label = label, value = value, color = WarningOrange)
+private fun KorakPoKorakStats(user: User?) {
+    val rounds = user?.korakRounds ?: 0
+    if (rounds == 0) {
+        Text("Nema odigranih rundi.", color = MediumGray, style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    val steps = listOf(
+        user?.korakStep1 ?: 0, user?.korakStep2 ?: 0, user?.korakStep3 ?: 0,
+        user?.korakStep4 ?: 0, user?.korakStep5 ?: 0, user?.korakStep6 ?: 0,
+        user?.korakStep7 ?: 0
+    )
+    val totalCorrect = steps.sum()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Tačno pogođenih: $totalCorrect / $rounds rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
+        steps.forEachIndexed { i, count ->
+            val pct = count.toFloat() / rounds
+            LabeledProgressBar(label = "Korak ${i + 1}", value = pct, color = GameKorak)
         }
     }
 }
 
 @Composable
-private fun AsocijacijeStats() {
+private fun AsocijacijeStats(user: User?) {
+    val solved = user?.asocijacijeSolved ?: 0
+    val total = user?.asocijacijeTotal ?: 0
+    if (total == 0) {
+        Text("Nema odigranih igara.", color = MediumGray, style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    val ratio = solved.toFloat() / total
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Prosečni bodovi: 18–40 bod./rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
-        LabeledProgressBar(label = "Rešene asocijacije", value = 0.48f, color = GoldLight)
-        LabeledProgressBar(label = "Nerešene asocijacije", value = 0.52f, color = DarkGray)
+        Text("Rešeno: $solved / $total pokušaja", color = LightGray, style = MaterialTheme.typography.bodySmall)
+        LabeledProgressBar(label = "Tačni odgovori", value = ratio, color = GameAsocijacije)
+        LabeledProgressBar(label = "Netačni odgovori", value = 1f - ratio, color = ErrorRed)
     }
 }
 
 @Composable
-private fun SkockoStats() {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Prosečni bodovi: 10–18 bod./rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
-        val attemptLabels = listOf("1-2. pokušaj", "3-4. pokušaj", "5-6. pokušaj", "Nije pogođeno")
-        val attemptValues = listOf(0.15f, 0.35f, 0.30f, 0.20f)
-        val attemptColors = listOf(SuccessGreen, Gold, WarningOrange, ErrorRed)
-        attemptLabels.zip(attemptValues).zip(attemptColors).forEach { (pair, color) ->
-            LabeledProgressBar(label = pair.first, value = pair.second, color = color)
+private fun SkockoStats(user: User?) {
+    val rounds = user?.skockoRounds ?: 0
+    if (rounds == 0) {
+        Text("Nema odigranih rundi.", color = MediumGray, style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    val attempts = listOf(
+        user?.skockoAttempt1 ?: 0, user?.skockoAttempt2 ?: 0, user?.skockoAttempt3 ?: 0,
+        user?.skockoAttempt4 ?: 0, user?.skockoAttempt5 ?: 0, user?.skockoAttempt6 ?: 0
+    )
+    val totalSolved = attempts.sum()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Pogođeno: $totalSolved / $rounds rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
+        attempts.forEachIndexed { i, count ->
+            val pct = count.toFloat() / rounds
+            LabeledProgressBar(label = "Pokušaj ${i + 1}", value = pct, color = GameSkocko)
         }
     }
 }
@@ -426,7 +504,7 @@ private fun LabeledProgressBar(label: String, value: Float, color: Color) {
             Text("${(value * 100).toInt()}%", color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
         }
         LinearProgressIndicator(
-            progress = value,
+            progress = { value },
             modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(4.dp)),
             color = color,
             trackColor = DarkGray
@@ -474,24 +552,17 @@ private fun LogoutDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         title = { Text("Odjava", color = White, fontWeight = FontWeight.Bold) },
         text = { Text("Da li ste sigurni da se želite odjaviti?", color = LightGray) },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("ODJAVI SE", color = ErrorRed, fontWeight = FontWeight.Bold)
-            }
+            TextButton(onClick = onConfirm) { Text("ODJAVI SE", color = ErrorRed, fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Otkaži", color = LightGray)
-            }
+            TextButton(onClick = onDismiss) { Text("Otkaži", color = LightGray) }
         }
     )
 }
 
 @Composable
-private fun AvatarPickerDialog(onDismiss: () -> Unit) {
-    val avatarIcons = listOf(
-        Icons.Default.Person, Icons.Default.Face, Icons.Default.SportsEsports,
-        Icons.Default.Star, Icons.Default.EmojiEvents, Icons.Default.Psychology
-    )
+private fun AvatarPickerDialog(currentIndex: Int, onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
+    var selected by remember { mutableStateOf(currentIndex) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = NavyCard,
@@ -501,13 +572,15 @@ private fun AvatarPickerDialog(onDismiss: () -> Unit) {
                 Text("Izaberite jednu od ikonica:", color = LightGray, style = MaterialTheme.typography.bodySmall)
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    avatarIcons.take(3).forEach { icon ->
+                    avatarIcons.take(3).forEachIndexed { i, icon ->
+                        val isSelected = selected == i
                         Box(
                             modifier = Modifier
                                 .size(52.dp)
                                 .clip(CircleShape)
-                                .background(PrimaryBlue)
-                                .border(2.dp, MediumGray, CircleShape),
+                                .background(if (isSelected) PrimaryBlueBright else PrimaryBlue)
+                                .border(2.dp, if (isSelected) Gold else MediumGray, CircleShape)
+                                .clickable { selected = i },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(icon, null, tint = White, modifier = Modifier.size(28.dp))
@@ -516,13 +589,16 @@ private fun AvatarPickerDialog(onDismiss: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    avatarIcons.drop(3).forEach { icon ->
+                    avatarIcons.drop(3).forEachIndexed { i, icon ->
+                        val realIndex = i + 3
+                        val isSelected = selected == realIndex
                         Box(
                             modifier = Modifier
                                 .size(52.dp)
                                 .clip(CircleShape)
-                                .background(PrimaryBlue)
-                                .border(2.dp, MediumGray, CircleShape),
+                                .background(if (isSelected) PrimaryBlueBright else PrimaryBlue)
+                                .border(2.dp, if (isSelected) Gold else MediumGray, CircleShape)
+                                .clickable { selected = realIndex },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(icon, null, tint = White, modifier = Modifier.size(28.dp))
@@ -532,90 +608,11 @@ private fun AvatarPickerDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Potvrdi", color = PrimaryBlueBright, fontWeight = FontWeight.Bold)
-            }
+            TextButton(onClick = { onSelect(selected) }) { Text("Potvrdi", color = PrimaryBlueBright, fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Otkaži", color = LightGray)
-            }
+            TextButton(onClick = onDismiss) { Text("Otkaži", color = LightGray) }
         }
     )
 }
 
-@Composable
-private fun BottomNavBar(
-    onHomeClick: () -> Unit,
-    onRankingClick: () -> Unit,
-    onFriendsClick: () -> Unit,
-    onChatClick: () -> Unit
-) {
-    NavigationBar(containerColor = NavyLight) {
-        NavigationBarItem(
-            selected = false,
-            onClick = onHomeClick,
-            icon = { Icon(Icons.Default.Home, null) },
-            label = { Text("Početna") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = PrimaryBlueBright,
-                selectedTextColor = PrimaryBlueBright,
-                indicatorColor = NavyCard,
-                unselectedIconColor = MediumGray,
-                unselectedTextColor = MediumGray
-            )
-        )
-        NavigationBarItem(
-            selected = true,
-            onClick = {},
-            icon = { Icon(Icons.Default.Person, null) },
-            label = { Text("Profil") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = PrimaryBlueBright,
-                selectedTextColor = PrimaryBlueBright,
-                indicatorColor = NavyCard,
-                unselectedIconColor = MediumGray,
-                unselectedTextColor = MediumGray
-            )
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onRankingClick,
-            icon = { Icon(Icons.Default.Leaderboard, null) },
-            label = { Text("Rang") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = PrimaryBlueBright,
-                selectedTextColor = PrimaryBlueBright,
-                indicatorColor = NavyCard,
-                unselectedIconColor = MediumGray,
-                unselectedTextColor = MediumGray
-            )
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onFriendsClick,
-            icon = { Icon(Icons.Default.Group, null) },
-            label = { Text("Prijatelji") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = PrimaryBlueBright,
-                selectedTextColor = PrimaryBlueBright,
-                indicatorColor = NavyCard,
-                unselectedIconColor = MediumGray,
-                unselectedTextColor = MediumGray
-            )
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onChatClick,
-            icon = { Icon(Icons.Default.Chat, null) },
-            label = { Text("Čet") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = PrimaryBlueBright,
-                selectedTextColor = PrimaryBlueBright,
-                indicatorColor = NavyCard,
-                unselectedIconColor = MediumGray,
-                unselectedTextColor = MediumGray
-            )
-        )
-    }
-}

@@ -9,6 +9,8 @@ class FirestoreSeedRepository {
     suspend fun seedDatabase() {
         seedKorakPoKorak()
         seedAsocijacije()
+        seedKoZnaZna()
+        seedSpojnice()
     }
 
     private suspend fun seedKorakPoKorak() {
@@ -165,5 +167,69 @@ class FirestoreSeedRepository {
             )
         )
         questions.forEach { collection.add(it).await() }
+    }
+
+    private suspend fun seedKoZnaZna() {
+        val collection = db.collection("ko_zna_zna")
+        val existing = collection.get().await()
+        if (!existing.isEmpty) return
+
+        val questions = listOf(
+            mapOf("question" to "Koji grad je prestonica Australije?",
+                "answers" to listOf("Sidnej", "Melburn", "Kanbera", "Brizben"), "correctIndex" to 2L),
+            mapOf("question" to "Koliko strana ima kocka?",
+                "answers" to listOf("4", "6", "8", "12"), "correctIndex" to 1L),
+            mapOf("question" to "Koji element ima hemijski simbol 'Au'?",
+                "answers" to listOf("Srebro", "Aluminijum", "Zlato", "Bakar"), "correctIndex" to 2L),
+            mapOf("question" to "Koja planeta je najbliža Suncu?",
+                "answers" to listOf("Venera", "Mars", "Merkur", "Zemlja"), "correctIndex" to 2L),
+            mapOf("question" to "Koji rečni tok je najduži na svetu?",
+                "answers" to listOf("Nil", "Amazon", "Dunav", "Jangce"), "correctIndex" to 0L),
+            mapOf("question" to "Koliko zuba ima odrasli čovek?",
+                "answers" to listOf("28", "30", "32", "36"), "correctIndex" to 2L),
+            mapOf("question" to "Koji je hemijski simbol za vodu?",
+                "answers" to listOf("O2", "H2O", "CO2", "NaCl"), "correctIndex" to 1L),
+            mapOf("question" to "Koliko planeta ima Sunčev sistem?",
+                "answers" to listOf("7", "8", "9", "10"), "correctIndex" to 1L),
+            mapOf("question" to "Koji kontinent ima najveću površinu?",
+                "answers" to listOf("Amerika", "Afrika", "Azija", "Australija"), "correctIndex" to 2L),
+            mapOf("question" to "Ko je bio prvi predsednik SAD?",
+                "answers" to listOf("Abraham Linkoln", "Džordž Vašington", "Tomas Džeferson", "Džon Adams"), "correctIndex" to 1L)
+        )
+        questions.forEach { collection.add(it).await() }
+    }
+
+    private suspend fun seedSpojnice() {
+        val collection = db.collection("spojnice")
+        val existing = collection.get().await()
+        if (!existing.isEmpty) return
+
+        val rounds = listOf(
+            mapOf(
+                "criterion" to "Povežite prestonicu sa državom",
+                "leftItems" to listOf("Pariz", "Tokio", "Kairo", "Beograd", "Berlin"),
+                "rightItems" to listOf("Srbija", "Egipat", "Nemačka", "Francuska", "Japan"),
+                "correctMapping" to listOf(3L, 4L, 1L, 0L, 2L)
+            ),
+            mapOf(
+                "criterion" to "Povežite hemijski simbol sa elementom",
+                "leftItems" to listOf("Au", "Fe", "Na", "Cu", "Hg"),
+                "rightItems" to listOf("Živa", "Bakar", "Natrijum", "Gvožđe", "Zlato"),
+                "correctMapping" to listOf(4L, 3L, 2L, 1L, 0L)
+            ),
+            mapOf(
+                "criterion" to "Povežite sport sa brojem igrača u timu",
+                "leftItems" to listOf("Fudbal", "Košarka", "Odbojka", "Vaterpolo", "Ragbi"),
+                "rightItems" to listOf("15", "11", "6", "7", "5"),
+                "correctMapping" to listOf(1L, 4L, 2L, 3L, 0L)
+            ),
+            mapOf(
+                "criterion" to "Povežite autora sa romanom",
+                "leftItems" to listOf("Ivo Andrić", "Branko Ćopić", "Desanka Maksimović", "Dobrica Ćosić", "Meša Selimović"),
+                "rightItems" to listOf("Derviš i smrt", "Vreme smrti", "Na Drini ćuprija", "Doživljaji Nikoletine Bursaća", "Krvava bajka"),
+                "correctMapping" to listOf(2L, 3L, 4L, 1L, 0L)
+            )
+        )
+        rounds.forEach { collection.add(it).await() }
     }
 }

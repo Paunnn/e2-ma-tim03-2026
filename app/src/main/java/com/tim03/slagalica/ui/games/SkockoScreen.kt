@@ -26,6 +26,7 @@ import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.SkockoAttemptResult
 import com.tim03.slagalica.viewmodel.SkockoPhase
 import com.tim03.slagalica.viewmodel.SkockoViewModel
+import kotlinx.coroutines.delay
 
 private data class SkockoSymbolDef(val kind: String, val color: Color)
 
@@ -42,6 +43,10 @@ private val skockoSymbols = listOf(
 @Composable
 fun SkockoScreen(
     onExitClick: () -> Unit,
+    isPartijaMode: Boolean = false,
+    onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
+    myScoreOffset: Int = 0,
+    oppScoreOffset: Int = 0,
     viewModel: SkockoViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -69,15 +74,21 @@ fun SkockoScreen(
                 round = "Pokušaj ${state.myAttempts.size + 1}/6",
                 timeLeft = state.timeLeft,
                 totalTime = maxTimer.toInt(),
-                myScore = state.myScore,
-                oppScore = state.opponentScore,
+                myScore = state.myScore + myScoreOffset,
+                oppScore = state.opponentScore + oppScoreOffset,
                 onExit = onExitClick
             )
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
 
-            if (state.phase == SkockoPhase.GAME_OVER) {
+            LaunchedEffect(state.phase == SkockoPhase.GAME_OVER) {
+                if (state.phase == SkockoPhase.GAME_OVER && isPartijaMode) {
+                    delay(3000L)
+                    onPartijaGameComplete(state.myScore, state.opponentScore)
+                }
+            }
+            if (state.phase == SkockoPhase.GAME_OVER && !isPartijaMode) {
                 GameOverContent(
                     myScore = state.myScore,
                     opponentScore = state.opponentScore,

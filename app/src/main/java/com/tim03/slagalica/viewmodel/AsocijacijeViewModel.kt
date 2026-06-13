@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.tim03.slagalica.data.model.AsocijacijeQuestion
 import com.tim03.slagalica.data.model.ColumnData
 import com.tim03.slagalica.data.repository.AsocijacijeRepository
+import com.tim03.slagalica.data.repository.UserRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,19 +34,29 @@ data class AsocijacijeUiState(
 )
 
 class AsocijacijeViewModel(
-    private val repo: AsocijacijeRepository = AsocijacijeRepository()
+    private val repo: AsocijacijeRepository = AsocijacijeRepository(),
+    private val userRepo: UserRepository = UserRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AsocijacijeUiState())
     val uiState: StateFlow<AsocijacijeUiState> = _uiState.asStateFlow()
 
+    private val _username = MutableStateFlow("Igrač")
+    val username: StateFlow<String> = _username.asStateFlow()
+
     private var timerJob: Job? = null
     private var opponentJob: Job? = null
     private var round1Question: AsocijacijeQuestion? = null
     private var round2Question: AsocijacijeQuestion? = null
+    private var myGuessesSolved = 0
+    private var myGuessesTotal = 0
+    private var resultSaved = false
 
     init {
         loadGame()
+        viewModelScope.launch {
+            runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
+        }
     }
 
     private fun loadGame() {
@@ -229,10 +240,12 @@ class AsocijacijeViewModel(
         if (!state.isMyTurn || state.columnSolved[col]) return
         if (state.currentQuestion == null) return
 
+        myGuessesTotal++
         val correct = normalizeDiacritics(answer) ==
             normalizeDiacritics(state.currentQuestion.columns()[col].solution)
 
         if (correct) {
+            myGuessesSolved++
             val score = getColumnScore(col, state.revealed)
             val newSolved = state.columnSolved.toMutableList().also { it[col] = true }
             // Player scored — can keep guessing other columns/final (spec rule e)
@@ -253,10 +266,12 @@ class AsocijacijeViewModel(
         if (!state.isMyTurn || state.finalSolved) return
         if (state.currentQuestion == null) return
 
+        myGuessesTotal++
         val correct = normalizeDiacritics(answer) ==
             normalizeDiacritics(state.currentQuestion.finalSolution)
 
         if (correct) {
+            myGuessesSolved++
             timerJob?.cancel()
             opponentJob?.cancel()
             val score = getFinalScore(state.revealed, state.columnSolved)
@@ -296,6 +311,19 @@ class AsocijacijeViewModel(
         timerJob?.cancel()
         opponentJob?.cancel()
         _uiState.value = _uiState.value.copy(phase = AsocijacijePhase.GAME_OVER)
+        if (!resultSaved) {
+            resultSaved = true
+            val solved = myGuessesSolved
+            val total = myGuessesTotal
+            val myScore = _uiState.value.myScore
+            val oppScore = _uiState.value.opponentScore
+            viewModelScope.launch {
+                runCatching {
+                    userRepo.saveAsocijacijeResult(solved, total)
+                    userRepo.saveGameResult(won = myScore > oppScore)
+                }
+            }
+        }
     }
 
     private fun fallbackQuestion(index: Int): AsocijacijeQuestion =
