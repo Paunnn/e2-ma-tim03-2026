@@ -36,6 +36,29 @@ class AsocijacijeRepository {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    suspend fun getQuestionById(id: String): AsocijacijeQuestion? {
+        return try {
+            val doc = db.collection("asocijacije").document(id).get().await()
+            if (!doc.exists()) return null
+            fun parseCol(raw: Any?): ColumnData {
+                val m = raw as? Map<String, Any> ?: return ColumnData()
+                return ColumnData(
+                    clues = (m["clues"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                    solution = (m["solution"] as? String) ?: ""
+                )
+            }
+            AsocijacijeQuestion(
+                id = doc.id,
+                columnA = parseCol(doc.get("columnA")),
+                columnB = parseCol(doc.get("columnB")),
+                columnC = parseCol(doc.get("columnC")),
+                columnD = parseCol(doc.get("columnD")),
+                finalSolution = doc.getString("finalSolution") ?: ""
+            )
+        } catch (e: Exception) { null }
+    }
+
     suspend fun getTwoRandomQuestions(): Pair<AsocijacijeQuestion?, AsocijacijeQuestion?> {
         return try {
             val snapshot = db.collection("asocijacije").get().await()

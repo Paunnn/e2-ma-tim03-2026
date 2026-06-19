@@ -4,6 +4,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.tim03.slagalica.data.model.NotificationModel
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -14,37 +15,50 @@ class NotificationRepository {
     private val auth = FirebaseAuth.getInstance()
 
     fun observeNotifications(): Flow<List<NotificationModel>> = callbackFlow {
-        val uid = auth.currentUser?.uid ?: run {
-            trySend(emptyList())
-            close()
-            return@callbackFlow
+        var firestoreListener: ListenerRegistration? = null
+
+        val authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            firestoreListener?.remove()
+            firestoreListener = null
+
+            val uid = firebaseAuth.currentUser?.uid
+            if (uid == null) {
+                trySend(emptyList())
+                return@AuthStateListener
+            }
+
+            firestoreListener = db.collection("notifications")
+                .whereEqualTo("userId", uid)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null) {
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
+                    val items = snapshot.documents.mapNotNull { doc ->
+                        try {
+                            NotificationModel(
+                                id = doc.id,
+                                userId = doc.getString("userId") ?: "",
+                                channel = doc.getString("channel") ?: "OTHER",
+                                title = doc.getString("title") ?: "",
+                                message = doc.getString("message") ?: "",
+                                timestamp = doc.getLong("timestamp") ?: 0L,
+                                isRead = doc.getBoolean("isRead") ?: false
+                            )
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }.sortedByDescending { it.timestamp }
+                    trySend(items)
+                }
         }
 
-        val listener = db.collection("notifications")
-            .whereEqualTo("userId", uid)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null) {
-                    trySend(emptyList())
-                    return@addSnapshotListener
-                }
-                val items = snapshot.documents.mapNotNull { doc ->
-                    try {
-                        NotificationModel(
-                            id = doc.id,
-                            userId = doc.getString("userId") ?: "",
-                            channel = doc.getString("channel") ?: "OTHER",
-                            title = doc.getString("title") ?: "",
-                            message = doc.getString("message") ?: "",
-                            timestamp = doc.getLong("timestamp") ?: 0L,
-                            isRead = doc.getBoolean("isRead") ?: false
-                        )
-                    } catch (e: Exception) {
-                        null
-                    }
-                }.sortedByDescending { it.timestamp }
-                trySend(items)
-            }
-        awaitClose { listener.remove() }
+        auth.addAuthStateListener(authStateListener)
+
+        awaitClose {
+            firestoreListener?.remove()
+            auth.removeAuthStateListener(authStateListener)
+        }
     }
 
     suspend fun markAsRead(notificationId: String) {

@@ -5,12 +5,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.tim03.slagalica.ui.auth.ChangePasswordScreen
 import com.tim03.slagalica.ui.auth.LoginScreen
 import com.tim03.slagalica.ui.auth.RegisterScreen
 import com.tim03.slagalica.ui.games.AsocijacijeScreen
+import com.tim03.slagalica.ui.partija.MatchmakingScreen
 import com.tim03.slagalica.ui.partija.PartijaScreen
 import com.tim03.slagalica.ui.games.KorakPoKorakScreen
 import com.tim03.slagalica.ui.games.KoZnaZnaScreen
@@ -59,15 +62,43 @@ fun AppNavigation(navController: NavHostController) {
                 onSpojniceClick = { navController.navigate(Screen.Spojnice.route) },
                 onAsocijacijeClick = { navController.navigate(Screen.Asocijacije.route) },
                 onSkockoClick = { navController.navigate(Screen.Skocko.route) },
-                onPartijaClick = { navController.navigate(Screen.Partija.route) },
+                onPartijaClick = { navController.navigate(Screen.Matchmaking.route) },
                 onProfileClick = { navController.navigate(Screen.Profile.route) },
                 onNotificationsClick = { navController.navigate(Screen.Notifications.route) },
+                onLogout = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
                 unreadNotifCount = unreadCount
             )
         }
 
-        composable(Screen.Partija.route) {
-            PartijaScreen(onExit = { navController.popBackStack() })
+        composable(Screen.Matchmaking.route) {
+            MatchmakingScreen(
+                onMatchFound = { sessionId, isPlayer1 ->
+                    navController.navigate(Screen.Partija.createRoute(sessionId, isPlayer1)) {
+                        popUpTo(Screen.Matchmaking.route) { inclusive = true }
+                    }
+                },
+                onCancel = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.Partija.route,
+            arguments = listOf(
+                navArgument("sessionId") { type = NavType.StringType },
+                navArgument("isPlayer1") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
+            val isPlayer1 = backStackEntry.arguments?.getString("isPlayer1") == "true"
+            PartijaScreen(
+                sessionId = sessionId,
+                isPlayer1 = isPlayer1,
+                onExit = { navController.popBackStack() }
+            )
         }
 
         composable(Screen.Profile.route) {

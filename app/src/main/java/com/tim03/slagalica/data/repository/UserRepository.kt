@@ -11,9 +11,12 @@ class UserRepository {
     private val db = FirebaseFirestore.getInstance()
 
     suspend fun getCurrentUser(): User? {
-        val uid = auth.currentUser?.uid ?: return null
-        val doc = db.collection("users").document(uid).get().await()
-        return doc.toObject(User::class.java)?.copy(uid = uid)
+        val firebaseUser = auth.currentUser ?: return null
+        if (firebaseUser.isAnonymous) {
+            return User(uid = firebaseUser.uid, username = firebaseUser.displayName ?: "Guest")
+        }
+        val doc = db.collection("users").document(firebaseUser.uid).get().await()
+        return doc.toObject(User::class.java)?.copy(uid = firebaseUser.uid)
     }
 
     suspend fun updateAvatar(avatarIndex: Int) {

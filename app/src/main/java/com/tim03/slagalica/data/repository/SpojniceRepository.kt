@@ -19,4 +19,20 @@ class SpojniceRepository {
             )
         }
     }
+
+    suspend fun getRoundsByIds(ids: List<String>): List<SpojniceQuestion> {
+        return ids.mapNotNull { id ->
+            try {
+                val doc = db.collection("spojnice").document(id).get().await()
+                if (!doc.exists()) null
+                else SpojniceQuestion(
+                    id = doc.id,
+                    criterion = doc.getString("criterion") ?: "",
+                    leftItems = (doc.get("leftItems") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                    rightItems = (doc.get("rightItems") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                    correctMapping = (doc.get("correctMapping") as? List<*>)?.map { (it as? Long)?.toInt() ?: 0 } ?: emptyList()
+                )
+            } catch (e: Exception) { null }
+        }
+    }
 }

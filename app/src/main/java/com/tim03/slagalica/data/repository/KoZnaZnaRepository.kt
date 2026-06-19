@@ -18,4 +18,19 @@ class KoZnaZnaRepository {
             )
         }
     }
+
+    suspend fun getQuestionsByIds(ids: List<String>): List<KoZnaZnaQuestion> {
+        return ids.mapNotNull { id ->
+            try {
+                val doc = db.collection("ko_zna_zna").document(id).get().await()
+                if (!doc.exists()) null
+                else KoZnaZnaQuestion(
+                    id = doc.id,
+                    question = doc.getString("question") ?: "",
+                    answers = (doc.get("answers") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                    correctIndex = (doc.getLong("correctIndex") ?: 0L).toInt()
+                )
+            } catch (e: Exception) { null }
+        }
+    }
 }

@@ -3,6 +3,7 @@ package com.tim03.slagalica.data.repository
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.tim03.slagalica.data.model.User
 import kotlinx.coroutines.tasks.await
@@ -77,6 +78,27 @@ class AuthRepository {
 
     suspend fun loginAsGuest(): Result<Unit> = runCatching {
         auth.signInAnonymously().await()
+
+        val guestNum = runCatching {
+            val counterRef = firestore.collection("config").document("guestCounter")
+            firestore.runTransaction { tx ->
+                val snap = tx.get(counterRef)
+                val next = (snap.getLong("count") ?: 0L) + 1L
+                tx.set(counterRef, mapOf("count" to next))
+                next
+            }.await()
+        }.getOrElse { (System.currentTimeMillis() % 10000) }
+
+        auth.currentUser?.updateProfile(
+            UserProfileChangeRequest.Builder().setDisplayName("Guest$guestNum").build()
+        )?.await()
+    }
+
+    fun cleanupGuestIfNeeded() {
+        val user = auth.currentUser
+        if (user?.isAnonymous == true) {
+            user.delete().addOnCompleteListener { auth.signOut() }
+        }
     }
 
     fun logout() = auth.signOut()

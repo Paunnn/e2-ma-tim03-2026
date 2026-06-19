@@ -43,10 +43,20 @@ fun HomeScreen(
     onPartijaClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
+    onLogout: () -> Unit = {},
     unreadNotifCount: Int = 0,
     homeViewModel: HomeViewModel = viewModel()
 ) {
     val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
+
+    if (homeState.isGuest) {
+        GuestHomeScreen(
+            username = homeState.username,
+            onPartijaClick = onPartijaClick,
+            onLogout = { homeViewModel.logout(); onLogout() }
+        )
+        return
+    }
 
     Scaffold(
         containerColor = Navy,
@@ -382,6 +392,119 @@ private fun GameCard(
                 }
             }
             Icon(icon, contentDescription = null, tint = gameColor.copy(alpha = 0.8f), modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+// ── Guest home ───────────────────────────────────────────────────
+
+@Composable
+private fun GuestHomeScreen(
+    username: String,
+    onPartijaClick: () -> Unit,
+    onLogout: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Navy)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MediumGray.copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("G", color = LightGray, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(username, color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                IconButton(onClick = onLogout) {
+                    Icon(Icons.Default.Logout, contentDescription = "Odjava", tint = LightGray, modifier = Modifier.size(22.dp))
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            Surface(shape = RoundedCornerShape(24.dp), color = PrimaryBlue, modifier = Modifier.size(80.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Star, null, tint = Gold, modifier = Modifier.size(44.dp))
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Text("SLAGALICA", color = Gold, fontWeight = FontWeight.ExtraBold, fontSize = 26.sp, letterSpacing = 4.sp)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Prijavili ste se kao neregistrovan korisnik",
+                color = MediumGray, fontSize = 13.sp, textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(40.dp))
+
+            Button(
+                onClick = onPartijaClick,
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Gold)
+            ) {
+                Icon(Icons.Default.PlayArrow, null, tint = Navy, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "ZAPOČNI PARTIJU",
+                    color = Navy,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.sp,
+                    letterSpacing = 1.sp
+                )
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = NavyLight),
+                border = BorderStroke(1.dp, LineSoft)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Registrujte se za više opcija",
+                        color = White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp
+                    )
+                    Text(
+                        "Pratite statistike, rang liste i dostignuća.",
+                        color = MediumGray, fontSize = 11.sp, textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(onClick = onLogout) {
+                        Text("Idi na prijavu →", color = Gold, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
         }
     }
 }

@@ -24,8 +24,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.data.model.KoZnaZnaQuestion
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.KoZnaZnaViewModel
+import com.tim03.slagalica.viewmodel.KoZnaZnaViewModelFactory
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,103 +35,25 @@ fun KoZnaZnaScreen(
     onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
     myScoreOffset: Int = 0,
     oppScoreOffset: Int = 0,
-    viewModel: KoZnaZnaViewModel = viewModel()
+    sessionId: String = "",
+    isPlayer1: Boolean = true,
+    gameIdx: Int = -1,
+    oppName: String = "Protivnik"
 ) {
+    val viewModel: KoZnaZnaViewModel = viewModel(
+        factory = KoZnaZnaViewModelFactory(sessionId, isPlayer1, gameIdx)
+    )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val username by viewModel.username.collectAsStateWithLifecycle()
-    val questions = state.questions
 
-    var currentQuestionIndex by remember { mutableStateOf(0) }
-    var myScore by remember { mutableStateOf(0) }
-    var opponentScore by remember { mutableStateOf(0) }
-    var questionTimeLeft by remember { mutableStateOf(5) }
-    var gameOver by remember { mutableStateOf(false) }
-    var correctCount by remember { mutableStateOf(0) }
-    var incorrectCount by remember { mutableStateOf(0) }
-    var resultSaved by remember { mutableStateOf(false) }
+    val currentQuestion = state.questions.getOrNull(state.currentQuestionIndex)
 
-    // Per-question state
-    var playerAnswerIndex by remember { mutableStateOf<Int?>(null) }
-    var playerAnswerTimeMs by remember { mutableStateOf<Long?>(null) }
-    var opponentAnswerIndex by remember { mutableStateOf<Int?>(null) }
-    var opponentAnswerTimeMs by remember { mutableStateOf<Long?>(null) }
-    var revealPhase by remember { mutableStateOf(false) }
-    var questionStartTime by remember { mutableStateOf(0L) }
-    var questionOutcomes by remember { mutableStateOf(mapOf<Int, Int>()) } // 1=player+10, -1=player-5, 0=no player score
-
-    // Per-question flow — resets on each new question
-    LaunchedEffect(currentQuestionIndex, state.isLoading) {
-        if (state.isLoading || questions.isEmpty() || gameOver) return@LaunchedEffect
-
-        playerAnswerIndex = null
-        playerAnswerTimeMs = null
-        opponentAnswerIndex = null
-        opponentAnswerTimeMs = null
-        revealPhase = false
-        questionTimeLeft = 5
-        questionStartTime = System.currentTimeMillis()
-
-        // Opponent picks a random answer at a random time (0.8–4.8s)
-        launch {
-            val oppDelay = (800L..4800L).random()
-            delay(oppDelay)
-            if (!revealPhase) {
-                opponentAnswerIndex = (0..3).random()
-                opponentAnswerTimeMs = oppDelay
-                if (playerAnswerIndex != null) revealPhase = true
-            }
-        }
-
-        // 5s per-question countdown
-        for (tick in 5 downTo 1) {
-            if (revealPhase) break
-            delay(1000L)
-            if (!revealPhase) questionTimeLeft = tick - 1
-        }
-        if (!revealPhase) revealPhase = true
-
-        // Reveal for 2.5s
-        delay(2500L)
-
-        val q = questions.getOrNull(currentQuestionIndex) ?: return@LaunchedEffect
-        val pAnswered = playerAnswerIndex != null
-        val oAnswered = opponentAnswerIndex != null
-        val pCorrect = pAnswered && playerAnswerIndex == q.correctIndex
-        val oCorrect = oAnswered && opponentAnswerIndex == q.correctIndex
-        val pTime = playerAnswerTimeMs ?: Long.MAX_VALUE
-        val oTime = opponentAnswerTimeMs ?: Long.MAX_VALUE
-
-        val playerGetsPoints = pCorrect && (!oCorrect || pTime <= oTime)
-        when {
-            playerGetsPoints -> { myScore += 10; correctCount++ }
-            pCorrect -> correctCount++
-            pAnswered -> { myScore -= 5; incorrectCount++ }
-        }
-        val opponentGetsPoints = oCorrect && (!pCorrect || oTime < pTime)
-        when {
-            opponentGetsPoints -> opponentScore += 10
-            oAnswered && !oCorrect -> opponentScore -= 5
-        }
-
-        val outcome = when {
-            playerGetsPoints -> 1
-            pAnswered && !pCorrect -> -1
-            else -> 0
-        }
-        questionOutcomes = questionOutcomes + (currentQuestionIndex to outcome)
-
-        if (currentQuestionIndex < questions.size - 1) {
-            currentQuestionIndex++
-        } else {
-            if (!resultSaved) {
-                resultSaved = true
-                viewModel.saveResult(correctCount, incorrectCount, won = myScore > opponentScore)
-            }
-            gameOver = true
+    LaunchedEffect(state.gameOver) {
+        if (state.gameOver && isPartijaMode) {
+            delay(3000L)
+            onPartijaGameComplete(state.myScore, state.opponentScore)
         }
     }
-
-    val currentQuestion = questions.getOrNull(currentQuestionIndex)
 
     Box(modifier = Modifier.fillMaxSize().background(Navy)) {
         Scaffold(
@@ -141,12 +63,13 @@ fun KoZnaZnaScreen(
                     gameName = "Ko zna zna",
                     gameColor = GameKoZnaZna,
                     gameIcon = "?",
-                    round = "${currentQuestionIndex + 1}/${questions.size.coerceAtLeast(1)} pit.",
-                    timeLeft = questionTimeLeft,
+                    round = "${state.currentQuestionIndex + 1}/${state.questions.size.coerceAtLeast(1)} pit.",
+                    timeLeft = state.timeLeft,
                     totalTime = 5,
-                    myScore = myScore + myScoreOffset,
-                    oppScore = opponentScore + oppScoreOffset,
+                    myScore = state.myScore + myScoreOffset,
+                    oppScore = state.opponentScore + oppScoreOffset,
                     myName = username,
+                    oppName = oppName,
                     onExit = onExitClick
                 )
             }
@@ -155,7 +78,10 @@ fun KoZnaZnaScreen(
                 when {
                     state.isLoading -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
                                 CircularProgressIndicator(color = GameKoZnaZna)
                                 Text("Učitavanje pitanja...", color = LightGray)
                             }
@@ -163,7 +89,10 @@ fun KoZnaZnaScreen(
                     }
                     state.error != null -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
                                 Icon(Icons.Default.ErrorOutline, null, tint = ErrorRed, modifier = Modifier.size(48.dp))
                                 Text("Greška pri učitavanju pitanja", color = ErrorRed, fontWeight = FontWeight.Bold)
                                 Button(onClick = onExitClick, colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright)) {
@@ -172,16 +101,10 @@ fun KoZnaZnaScreen(
                             }
                         }
                     }
-                    gameOver && !isPartijaMode -> {
-                        GameOverContent(myScore = myScore, opponentScore = opponentScore, onFinish = onExitClick)
+                    state.gameOver && !isPartijaMode -> {
+                        GameOverContent(myScore = state.myScore, opponentScore = state.opponentScore, onFinish = onExitClick)
                     }
                     else -> {
-                        LaunchedEffect(gameOver) {
-                            if (gameOver && isPartijaMode) {
-                                delay(3000L)
-                                onPartijaGameComplete(myScore, opponentScore)
-                            }
-                        }
                         Column(
                             modifier = Modifier
                                 .weight(1f)
@@ -189,15 +112,15 @@ fun KoZnaZnaScreen(
                                 .padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            QuestionProgressRow(
-                                total = questions.size,
-                                outcomes = questionOutcomes,
-                                current = currentQuestionIndex
+                            KoZnaZnaQuestionProgressRow(
+                                total = state.questions.size,
+                                outcomes = state.questionOutcomes,
+                                current = state.currentQuestionIndex
                             )
 
                             if (currentQuestion != null) {
                                 Text(
-                                    "PITANJE ${currentQuestionIndex + 1}",
+                                    "PITANJE ${state.currentQuestionIndex + 1}",
                                     color = MediumGray, fontSize = 10.sp,
                                     fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp,
                                     modifier = Modifier.fillMaxWidth(),
@@ -212,35 +135,27 @@ fun KoZnaZnaScreen(
                                 )
 
                                 currentQuestion.answers.forEachIndexed { index, answer ->
-                                    val btnState = if (revealPhase) {
+                                    val btnState = if (state.revealPhase) {
                                         when {
-                                            index == currentQuestion.correctIndex -> AnswerState.CORRECT
-                                            playerAnswerIndex == index -> AnswerState.PLAYER_WRONG
-                                            opponentAnswerIndex == index -> AnswerState.OPP_WRONG
-                                            else -> AnswerState.IDLE
+                                            index == currentQuestion.correctIndex -> KzzAnswerState.CORRECT
+                                            state.playerAnswerIndex == index -> KzzAnswerState.PLAYER_WRONG
+                                            state.opponentAnswerIndex == index -> KzzAnswerState.OPP_WRONG
+                                            else -> KzzAnswerState.IDLE
                                         }
-                                    } else {
-                                        AnswerState.IDLE
-                                    }
-                                    AnswerButton(
+                                    } else KzzAnswerState.IDLE
+
+                                    KoZnaZnaAnswerButton(
                                         label = ('A' + index).toString(),
                                         text = answer,
                                         state = btnState,
-                                        playerBadge = revealPhase && playerAnswerIndex == index,
-                                        opponentBadge = revealPhase && opponentAnswerIndex == index,
-                                        enabled = !revealPhase && playerAnswerIndex == null && !gameOver,
-                                        onClick = {
-                                            if (!revealPhase && playerAnswerIndex == null && !gameOver) {
-                                                playerAnswerIndex = index
-                                                playerAnswerTimeMs = System.currentTimeMillis() - questionStartTime
-                                                if (opponentAnswerIndex != null) revealPhase = true
-                                            }
-                                        }
+                                        playerBadge = state.revealPhase && state.playerAnswerIndex == index,
+                                        opponentBadge = state.revealPhase && state.opponentAnswerIndex == index,
+                                        enabled = !state.revealPhase && state.playerAnswerIndex == null && !state.gameOver,
+                                        onClick = { viewModel.selectAnswer(index) }
                                     )
                                 }
 
-                                // Waiting for opponent
-                                AnimatedVisibility(visible = playerAnswerIndex != null && !revealPhase) {
+                                AnimatedVisibility(visible = state.playerAnswerIndex != null && !state.revealPhase) {
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp),
@@ -267,14 +182,14 @@ fun KoZnaZnaScreen(
                                     }
                                 }
 
-                                // Reveal panel
-                                AnimatedVisibility(visible = revealPhase) {
-                                    RevealPanel(
+                                AnimatedVisibility(visible = state.revealPhase) {
+                                    KoZnaZnaRevealPanel(
                                         question = currentQuestion,
-                                        playerAnswerIndex = playerAnswerIndex,
-                                        opponentAnswerIndex = opponentAnswerIndex,
-                                        playerAnswerTimeMs = playerAnswerTimeMs,
-                                        opponentAnswerTimeMs = opponentAnswerTimeMs
+                                        playerAnswerIndex = state.playerAnswerIndex,
+                                        opponentAnswerIndex = state.opponentAnswerIndex,
+                                        playerAnswerTimeMs = state.playerAnswerTimeMs,
+                                        opponentAnswerTimeMs = state.opponentAnswerTimeMs,
+                                        oppName = oppName
                                     )
                                 }
                             }
@@ -286,10 +201,10 @@ fun KoZnaZnaScreen(
     }
 }
 
-private enum class AnswerState { IDLE, CORRECT, PLAYER_WRONG, OPP_WRONG }
+private enum class KzzAnswerState { IDLE, CORRECT, PLAYER_WRONG, OPP_WRONG }
 
 @Composable
-private fun QuestionProgressRow(total: Int, outcomes: Map<Int, Int>, current: Int) {
+private fun KoZnaZnaQuestionProgressRow(total: Int, outcomes: Map<Int, Int>, current: Int) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -317,32 +232,32 @@ private fun QuestionProgressRow(total: Int, outcomes: Map<Int, Int>, current: In
 }
 
 @Composable
-private fun AnswerButton(
+private fun KoZnaZnaAnswerButton(
     label: String,
     text: String,
-    state: AnswerState,
+    state: KzzAnswerState,
     playerBadge: Boolean = false,
     opponentBadge: Boolean = false,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
     val bgColor = when (state) {
-        AnswerState.CORRECT -> SuccessGreen
-        AnswerState.PLAYER_WRONG -> ErrorRed
-        AnswerState.OPP_WRONG -> Color(0xFFB45309)
-        AnswerState.IDLE -> NavyCard
+        KzzAnswerState.CORRECT -> SuccessGreen
+        KzzAnswerState.PLAYER_WRONG -> ErrorRed
+        KzzAnswerState.OPP_WRONG -> Color(0xFFB45309)
+        KzzAnswerState.IDLE -> NavyCard
     }
     val borderColor = when (state) {
-        AnswerState.CORRECT -> SuccessGreen
-        AnswerState.PLAYER_WRONG -> ErrorRed
-        AnswerState.OPP_WRONG -> Color(0xFFF59E0B)
-        AnswerState.IDLE -> LineColor
+        KzzAnswerState.CORRECT -> SuccessGreen
+        KzzAnswerState.PLAYER_WRONG -> ErrorRed
+        KzzAnswerState.OPP_WRONG -> Color(0xFFF59E0B)
+        KzzAnswerState.IDLE -> LineColor
     }
     val labelBg = when (state) {
-        AnswerState.CORRECT -> Navy
-        AnswerState.PLAYER_WRONG -> Color(0xFF7A0020)
-        AnswerState.OPP_WRONG -> Color(0xFF78350F)
-        AnswerState.IDLE -> NavyCardLight
+        KzzAnswerState.CORRECT -> Navy
+        KzzAnswerState.PLAYER_WRONG -> Color(0xFF7A0020)
+        KzzAnswerState.OPP_WRONG -> Color(0xFF78350F)
+        KzzAnswerState.IDLE -> NavyCardLight
     }
 
     Card(
@@ -351,7 +266,9 @@ private fun AnswerButton(
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = bgColor),
-        border = androidx.compose.foundation.BorderStroke(if (state != AnswerState.IDLE) 2.dp else 1.5.dp, borderColor)
+        border = androidx.compose.foundation.BorderStroke(
+            if (state != KzzAnswerState.IDLE) 2.dp else 1.5.dp, borderColor
+        )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
@@ -364,13 +281,13 @@ private fun AnswerButton(
             ) {
                 Text(
                     label,
-                    color = if (state == AnswerState.CORRECT) SuccessGreen else LightGray,
+                    color = if (state == KzzAnswerState.CORRECT) SuccessGreen else LightGray,
                     fontWeight = FontWeight.ExtraBold, fontSize = 12.sp
                 )
             }
             Text(
                 text,
-                color = if (state == AnswerState.CORRECT) Navy else White,
+                color = if (state == KzzAnswerState.CORRECT) Navy else White,
                 fontWeight = FontWeight.Bold, fontSize = 15.sp,
                 modifier = Modifier.weight(1f)
             )
@@ -393,27 +310,28 @@ private fun AnswerButton(
 }
 
 @Composable
-private fun RevealPanel(
+private fun KoZnaZnaRevealPanel(
     question: KoZnaZnaQuestion,
     playerAnswerIndex: Int?,
     opponentAnswerIndex: Int?,
     playerAnswerTimeMs: Long?,
-    opponentAnswerTimeMs: Long?
+    opponentAnswerTimeMs: Long?,
+    oppName: String = "Protivnik"
 ) {
-    val pCorrect = playerAnswerIndex == question.correctIndex
-    val oCorrect = opponentAnswerIndex == question.correctIndex
+    val pCorrect = playerAnswerIndex != null && playerAnswerIndex == question.correctIndex
+    val oCorrect = opponentAnswerIndex != null && opponentAnswerIndex >= 0 && opponentAnswerIndex == question.correctIndex
     val pTime = playerAnswerTimeMs ?: Long.MAX_VALUE
     val oTime = opponentAnswerTimeMs ?: Long.MAX_VALUE
 
     val outcomeText = when {
-        playerAnswerIndex == null && opponentAnswerIndex == null ->
+        playerAnswerIndex == null && (opponentAnswerIndex == null || opponentAnswerIndex < 0) ->
             "Niko nije odgovorio, nema promena"
         playerAnswerIndex == null ->
-            if (oCorrect) "Protivnik tačno (+10 protivnik)" else "Protivnik netačno (-5 protivnik)"
-        opponentAnswerIndex == null ->
-            if (pCorrect) "Tačno! Nisi imao protivnika (+10)" else "Netačno (-5)"
+            if (oCorrect) "$oppName tačno (+10 protivnik)" else "$oppName netačno (-5 protivnik)"
+        opponentAnswerIndex == null || opponentAnswerIndex < 0 ->
+            if (pCorrect) "Tačno! Protivnik nije odgovorio (+10)" else "Netačno (-5)"
         pCorrect && oCorrect ->
-            if (pTime <= oTime) "Oba tačno, Vi brži! +10 tebi" else "Oba tačno, Protivnik brži! +10 protivnik"
+            if (pTime <= oTime) "Oba tačno, Vi brži! +10 tebi" else "Oba tačno, $oppName brži! +10 protivnik"
         pCorrect -> "Tačno! Protivnik netačno, +10 tebi, -5 protivnik"
         oCorrect -> "Netačno, protivnik tačno, -5 tebi, +10 protivnik"
         else -> "Oba netačna, -5 tebi, -5 protivnik"
@@ -421,7 +339,7 @@ private fun RevealPanel(
 
     val outcomeColor = when {
         playerAnswerIndex != null && pCorrect &&
-            (opponentAnswerIndex == null || !oCorrect || pTime <= oTime) -> SuccessGreen
+            (opponentAnswerIndex == null || opponentAnswerIndex < 0 || !oCorrect || pTime <= oTime) -> SuccessGreen
         playerAnswerIndex != null && !pCorrect -> ErrorRed
         else -> LightGray
     }
@@ -433,7 +351,7 @@ private fun RevealPanel(
         border = androidx.compose.foundation.BorderStroke(1.dp, outcomeColor.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            RevealRow(
+            KoZnaZnaRevealRow(
                 label = "Ti",
                 answerText = playerAnswerIndex?.let { question.answers.getOrNull(it) } ?: "Nije odgovorio",
                 timeMs = playerAnswerTimeMs,
@@ -442,12 +360,13 @@ private fun RevealPanel(
                 labelColor = PrimaryBlueBright
             )
             HorizontalDivider(color = LineSoft)
-            RevealRow(
-                label = "Protivnik",
-                answerText = opponentAnswerIndex?.let { question.answers.getOrNull(it) } ?: "Nije odgovorio",
+            KoZnaZnaRevealRow(
+                label = oppName.take(10),
+                answerText = opponentAnswerIndex?.let { if (it >= 0) question.answers.getOrNull(it) else null }
+                    ?: "Nije odgovorio",
                 timeMs = opponentAnswerTimeMs,
-                isCorrect = opponentAnswerIndex != null && oCorrect,
-                isWrong = opponentAnswerIndex != null && !oCorrect,
+                isCorrect = oCorrect,
+                isWrong = opponentAnswerIndex != null && opponentAnswerIndex >= 0 && !oCorrect,
                 labelColor = Accent2
             )
             HorizontalDivider(color = LineSoft)
@@ -464,7 +383,7 @@ private fun RevealPanel(
 }
 
 @Composable
-private fun RevealRow(
+private fun KoZnaZnaRevealRow(
     label: String,
     answerText: String,
     timeMs: Long?,
@@ -477,35 +396,16 @@ private fun RevealRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            label,
-            color = labelColor,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 11.sp,
-            modifier = Modifier.width(64.dp)
-        )
+        Text(label, color = labelColor, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, modifier = Modifier.width(64.dp))
         Text(
             answerText,
-            color = when {
-                isCorrect -> SuccessGreen
-                isWrong -> ErrorRed
-                else -> MediumGray
-            },
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 13.sp,
-            modifier = Modifier.weight(1f)
+            color = when { isCorrect -> SuccessGreen; isWrong -> ErrorRed; else -> MediumGray },
+            fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f)
         )
         if (timeMs != null) {
-            Text(
-                "${timeMs / 1000}.${(timeMs % 1000) / 100}s",
-                color = MediumGray,
-                fontSize = 11.sp
-            )
+            Text("${timeMs / 1000}.${(timeMs % 1000) / 100}s", color = MediumGray, fontSize = 11.sp)
         }
-        if (isCorrect) {
-            Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
-        } else if (isWrong) {
-            Icon(Icons.Default.Cancel, null, tint = ErrorRed, modifier = Modifier.size(16.dp))
-        }
+        if (isCorrect) Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(16.dp))
+        else if (isWrong) Icon(Icons.Default.Cancel, null, tint = ErrorRed, modifier = Modifier.size(16.dp))
     }
 }

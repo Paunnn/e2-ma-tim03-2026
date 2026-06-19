@@ -37,6 +37,10 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        viewModel.cleanupGuestIfNeeded()
+    }
+
     LaunchedEffect(uiState.navigateTo) {
         when (uiState.navigateTo) {
             AuthNavEvent.HOME -> { viewModel.clearEvent(); onLoginSuccess() }
@@ -143,6 +147,23 @@ fun LoginScreen(
                 TextButton(onClick = onRegisterClick) {
                     Text("Registrujte se", color = Gold, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                 }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                color = MediumGray.copy(alpha = 0.25f)
+            )
+
+            TextButton(
+                onClick = { viewModel.loginAsGuest() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isLoading
+            ) {
+                Text(
+                    "Nastavi bez naloga",
+                    color = MediumGray,
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         }
     }

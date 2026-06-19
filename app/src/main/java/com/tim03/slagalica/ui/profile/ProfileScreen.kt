@@ -216,9 +216,6 @@ private fun ProfileHeaderSection(user: User?, onEditAvatarClick: () -> Unit) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 StatSummaryItem(value = "${user?.tokens ?: 0}", label = "Tokeni", icon = Icons.Default.Token, color = GoldLight)
                 StatSummaryItem(value = "${user?.stars ?: 0}", label = "Zvezde", icon = Icons.Default.Star, color = Gold)
-                val totalRounds = (user?.koZnaZnaRounds ?: 0) + (user?.spojniceRounds ?: 0) +
-                (user?.mojBrojRounds ?: 0) + (user?.korakRounds ?: 0) + (user?.skockoRounds ?: 0)
-                StatSummaryItem(value = "$totalRounds", label = "Rundi", icon = Icons.Default.Games, color = PrimaryBlueLight)
             }
 
             if (user != null) {
@@ -401,8 +398,10 @@ private fun KoZnaZnaStats(user: User?) {
     val total = correct + incorrect
     val correctRatio = if (total > 0) correct.toFloat() / total else 0f
     val incorrectRatio = if (total > 0) incorrect.toFloat() / total else 0f
+    val avgPts = if (rounds > 0) ((correct * 10 - incorrect * 5).toFloat() / rounds).coerceAtLeast(0f) else 0f
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        GamePerformanceBar(avgPoints = avgPts, maxPoints = 50f, color = GameKoZnaZna)
         Text("Odigrane runde: $rounds  ·  Tačno: $correct  ·  Netačno: $incorrect", color = LightGray, style = MaterialTheme.typography.bodySmall)
         LabeledProgressBar(label = "Tačni odgovori", value = correctRatio, color = SuccessGreen)
         LabeledProgressBar(label = "Netačni odgovori", value = incorrectRatio, color = ErrorRed)
@@ -415,8 +414,10 @@ private fun SpojniceStats(user: User?) {
     val totalPairs = user?.spojniceTotalPairs ?: 0
     val rounds = user?.spojniceRounds ?: 0
     val connectedRatio = if (totalPairs > 0) connected.toFloat() / totalPairs else 0f
+    val avgPts = if (rounds > 0) (connected * 2).toFloat() / rounds else 0f
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        GamePerformanceBar(avgPoints = avgPts, maxPoints = 20f, color = GameSpojnice)
         Text("Odigrane runde: $rounds  ·  Tačno: $connected / $totalPairs parova", color = LightGray, style = MaterialTheme.typography.bodySmall)
         LabeledProgressBar(label = "Uspešno povezani pojmovi", value = connectedRatio, color = GameSpojnice)
     }
@@ -431,7 +432,9 @@ private fun MojBrojStats(user: User?) {
         return
     }
     val ratio = hits.toFloat() / rounds
+    val avgPts = (hits * 10).toFloat() / rounds
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        GamePerformanceBar(avgPoints = avgPts, maxPoints = 10f, color = GameMojBroj)
         Text("Tačan pogodak: $hits / $rounds rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
         LabeledProgressBar(label = "Pronađen tačan broj", value = ratio, color = GameMojBroj)
     }
@@ -449,8 +452,12 @@ private fun KorakPoKorakStats(user: User?) {
         user?.korakStep4 ?: 0, user?.korakStep5 ?: 0, user?.korakStep6 ?: 0,
         user?.korakStep7 ?: 0
     )
+    val stepPoints = listOf(20, 18, 16, 14, 12, 10, 8)
+    val totalPts = steps.zip(stepPoints).sumOf { (count, pts) -> count * pts }
+    val avgPts = totalPts.toFloat() / rounds
     val totalCorrect = steps.sum()
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        GamePerformanceBar(avgPoints = avgPts, maxPoints = 20f, color = GameKorak)
         Text("Tačno pogođenih: $totalCorrect / $rounds rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
         steps.forEachIndexed { i, count ->
             val pct = count.toFloat() / rounds
@@ -468,7 +475,9 @@ private fun AsocijacijeStats(user: User?) {
         return
     }
     val ratio = solved.toFloat() / total
+    val avgPts = ratio * 31f
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        GamePerformanceBar(avgPoints = avgPts, maxPoints = 31f, color = GameAsocijacije)
         Text("Rešeno: $solved / $total pokušaja", color = LightGray, style = MaterialTheme.typography.bodySmall)
         LabeledProgressBar(label = "Tačni odgovori", value = ratio, color = GameAsocijacije)
         LabeledProgressBar(label = "Netačni odgovori", value = 1f - ratio, color = ErrorRed)
@@ -486,13 +495,48 @@ private fun SkockoStats(user: User?) {
         user?.skockoAttempt1 ?: 0, user?.skockoAttempt2 ?: 0, user?.skockoAttempt3 ?: 0,
         user?.skockoAttempt4 ?: 0, user?.skockoAttempt5 ?: 0, user?.skockoAttempt6 ?: 0
     )
+    val attemptPoints = listOf(20, 20, 15, 15, 10, 10)
+    val totalPts = attempts.zip(attemptPoints).sumOf { (count, pts) -> count * pts }
+    val avgPts = totalPts.toFloat() / rounds
     val totalSolved = attempts.sum()
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        GamePerformanceBar(avgPoints = avgPts, maxPoints = 20f, color = GameSkocko)
         Text("Pogođeno: $totalSolved / $rounds rundi", color = LightGray, style = MaterialTheme.typography.bodySmall)
         attempts.forEachIndexed { i, count ->
             val pct = count.toFloat() / rounds
             LabeledProgressBar(label = "Pokušaj ${i + 1}", value = pct, color = GameSkocko)
         }
+    }
+}
+
+@Composable
+private fun GamePerformanceBar(avgPoints: Float, maxPoints: Float, color: Color) {
+    val ratio = if (maxPoints > 0f) (avgPoints / maxPoints).coerceIn(0f, 1f) else 0f
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Statistička uspešnost",
+                color = LightGray,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "~${avgPoints.toInt()} / ${maxPoints.toInt()} bod.",
+                color = color,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        LinearProgressIndicator(
+            progress = { ratio },
+            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(4.dp)),
+            color = color,
+            trackColor = DarkGray
+        )
     }
 }
 

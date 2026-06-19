@@ -29,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.KorakPoKorakPhase
 import com.tim03.slagalica.viewmodel.KorakPoKorakViewModel
+import com.tim03.slagalica.viewmodel.KorakPoKorakViewModelFactory
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,18 +40,30 @@ fun KorakPoKorakScreen(
     onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
     myScoreOffset: Int = 0,
     oppScoreOffset: Int = 0,
-    viewModel: KorakPoKorakViewModel = viewModel()
+    sessionId: String = "",
+    isPlayer1: Boolean = true,
+    gameIdx: Int = -1,
+    oppName: String = "Protivnik"
 ) {
+    val viewModel: KorakPoKorakViewModel = viewModel(
+        factory = KorakPoKorakViewModelFactory(sessionId, isPlayer1, gameIdx)
+    )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val username by viewModel.username.collectAsStateWithLifecycle()
     var answer by remember { mutableStateOf("") }
 
-    val timerColor = when {
+    val isMainRound = state.phase == KorakPoKorakPhase.MY_TURN ||
+        state.phase == KorakPoKorakPhase.WAITING_OPPONENT
+    val totalTime = if (isMainRound) 70 else 10
+    val timerColor = if (isMainRound) when {
+        state.timeLeft > 40 -> TimerGreen
+        state.timeLeft > 20 -> TimerYellow
+        else -> TimerRed
+    } else when {
         state.timeLeft > 6 -> TimerGreen
         state.timeLeft > 3 -> TimerYellow
         else -> TimerRed
     }
-    val totalTime = 10
 
     Box(modifier = Modifier.fillMaxSize().background(Navy)) {
         Scaffold(
@@ -66,6 +79,7 @@ fun KorakPoKorakScreen(
                     myScore = state.myScore + myScoreOffset,
                     oppScore = state.opponentScore + oppScoreOffset,
                     myName = username,
+                    oppName = oppName,
                     onExit = onExitClick
                 )
             }

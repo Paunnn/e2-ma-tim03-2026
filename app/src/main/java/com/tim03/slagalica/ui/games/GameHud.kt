@@ -41,9 +41,12 @@ fun GameHud(
     myScore: Int,
     oppScore: Int,
     myName: String = "Igrač",
+    oppName: String = "Protivnik",
     onExit: () -> Unit = {}
 ) {
     val myInitials = myName.split("_", " ").filter { it.isNotBlank() }
+        .take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("").ifEmpty { "?" }
+    val oppInitials = oppName.split("_", " ").filter { it.isNotBlank() }
         .take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("").ifEmpty { "?" }
     Column(
         modifier = Modifier
@@ -134,7 +137,7 @@ fun GameHud(
                         horizontalAlignment = Alignment.End
                     ) {
                         Text(
-                            "marko88", color = MediumGray, fontSize = 11.sp,
+                            oppName, color = MediumGray, fontSize = 11.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis
                         )
                         Text(
@@ -151,7 +154,7 @@ fun GameHud(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("MK", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 8.sp)
+                        Text(oppInitials, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 8.sp)
                     }
                 }
             }

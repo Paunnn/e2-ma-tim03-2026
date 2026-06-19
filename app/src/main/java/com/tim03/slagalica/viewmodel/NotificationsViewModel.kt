@@ -2,6 +2,7 @@ package com.tim03.slagalica.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseAuth
 import com.tim03.slagalica.data.model.NotificationModel
 import com.tim03.slagalica.data.repository.NotificationRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +44,11 @@ class NotificationsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     init {
-        viewModelScope.launch { repo.seedSampleNotificationsIfEmpty() }
+        FirebaseAuth.getInstance().addAuthStateListener { firebaseAuth ->
+            if (firebaseAuth.currentUser != null) {
+                viewModelScope.launch { repo.seedSampleNotificationsIfEmpty() }
+            }
+        }
     }
 
     fun setFilter(f: NotifFilter) { _filter.value = f }

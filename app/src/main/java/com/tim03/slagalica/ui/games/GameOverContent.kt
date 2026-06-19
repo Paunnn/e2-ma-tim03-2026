@@ -18,10 +18,13 @@ import com.tim03.slagalica.ui.theme.*
 internal fun GameOverContent(
     myScore: Int,
     opponentScore: Int,
-    onFinish: () -> Unit
+    onFinish: () -> Unit,
+    forfeitMessage: String? = null,
+    wonOverride: Boolean? = null
 ) {
-    val playerWon = myScore > opponentScore
-    val tied = myScore == opponentScore
+    val isForfeit = forfeitMessage != null
+    val playerWon = wonOverride ?: (myScore > opponentScore)
+    val tied = !isForfeit && wonOverride == null && myScore == opponentScore
 
     Column(
         modifier = Modifier
@@ -64,49 +67,49 @@ internal fun GameOverContent(
         )
 
         Spacer(modifier = Modifier.height(8.dp))
-        Text("Igra je završena", color = MediumGray, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            forfeitMessage ?: "Igra je završena",
+            color = MediumGray,
+            style = MaterialTheme.typography.bodyMedium
+        )
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = NavyCard)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+        if (!isForfeit) {
+            Spacer(modifier = Modifier.height(32.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = NavyCard)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Ti", color = PrimaryBlueLight, style = MaterialTheme.typography.labelMedium)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "$myScore",
-                        color = if (playerWon) Gold else White,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 44.sp
-                    )
-                    Text("bodova", color = LightGray, style = MaterialTheme.typography.labelSmall)
-                }
-                Text(
-                    ":",
-                    color = MediumGray,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp
-                )
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Protivnik", color = LightGray, style = MaterialTheme.typography.labelMedium)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "$opponentScore",
-                        color = if (!playerWon && !tied) Gold else White,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 44.sp
-                    )
-                    Text("bodova", color = LightGray, style = MaterialTheme.typography.labelSmall)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Ti", color = PrimaryBlueLight, style = MaterialTheme.typography.labelMedium)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "$myScore",
+                            color = if (playerWon) Gold else White,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 44.sp
+                        )
+                        Text("bodova", color = LightGray, style = MaterialTheme.typography.labelSmall)
+                    }
+                    Text(":", color = MediumGray, fontWeight = FontWeight.Bold, fontSize = 28.sp)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Protivnik", color = LightGray, style = MaterialTheme.typography.labelMedium)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "$opponentScore",
+                            color = if (!playerWon && !tied) Gold else White,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 44.sp
+                        )
+                        Text("bodova", color = LightGray, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
         }

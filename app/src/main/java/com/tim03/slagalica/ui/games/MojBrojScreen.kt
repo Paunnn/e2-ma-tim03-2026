@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,8 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -29,11 +26,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.app.Application
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.MojBrojPhase
 import com.tim03.slagalica.viewmodel.MojBrojViewModel
+import com.tim03.slagalica.viewmodel.MojBrojViewModelFactory
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,8 +44,15 @@ fun MojBrojScreen(
     onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
     myScoreOffset: Int = 0,
     oppScoreOffset: Int = 0,
-    viewModel: MojBrojViewModel = viewModel()
+    sessionId: String = "",
+    isPlayer1: Boolean = true,
+    gameIdx: Int = -1,
+    oppName: String = "Protivnik"
 ) {
+    val application = LocalContext.current.applicationContext as Application
+    val viewModel: MojBrojViewModel = viewModel(
+        factory = MojBrojViewModelFactory(application, sessionId, isPlayer1, gameIdx)
+    )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val username by viewModel.username.collectAsStateWithLifecycle()
 
@@ -54,6 +61,15 @@ fun MojBrojScreen(
         state.timeLeft > 15 -> TimerYellow
         else -> TimerRed
     }
+
+    // In R1 P1 controls STOP; in R2 P2 controls STOP.
+    val isStopController = if (sessionId.isEmpty()) true
+                           else (isPlayer1 == (state.currentRound == 1))
+
+    val isWaiting = state.phase == MojBrojPhase.WAITING_STOP1 ||
+                    state.phase == MojBrojPhase.WAITING_STOP2
+    val showStopButton   = isWaiting && (sessionId.isEmpty() || isStopController)
+    val showWaitForStop  = isWaiting && sessionId.isNotEmpty() && !isStopController
 
     Box(modifier = Modifier.fillMaxSize().background(Navy)) {
         Scaffold(
@@ -69,6 +85,7 @@ fun MojBrojScreen(
                     myScore = state.myScore + myScoreOffset,
                     oppScore = state.opponentScore + oppScoreOffset,
                     myName = username,
+                    oppName = oppName,
                     onExit = onExitClick
                 )
             }
@@ -83,8 +100,40 @@ fun MojBrojScreen(
                 if (state.gameOver && !isPartijaMode) {
                     GameOverContent(myScore = state.myScore, opponentScore = state.opponentScore, onFinish = onExitClick)
                 } else {
-                    // Round result message
-                    AnimatedVisibility(visible = state.roundResultMessage != null && state.phase == MojBrojPhase.SUBMITTED) {
+                    // Waiting for opponent / waiting for stop controller
+                    AnimatedVisibility(visible = state.waitingMessage != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = NavyCard)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = PrimaryBlueBright
+                                )
+                                Text(
+                                    state.waitingMessage ?: "",
+                                    color = PrimaryBlueBright,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
+
+                    // Round result card (shown after submitting or between rounds)
+                    AnimatedVisibility(
+                        visible = state.roundResultMessage != null &&
+                                  (state.phase == MojBrojPhase.SUBMITTED ||
+                                   state.phase == MojBrojPhase.WAITING_STOP1 ||
+                                   state.phase == MojBrojPhase.WAITING_STOP2)
+                    ) {
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                             shape = RoundedCornerShape(8.dp),
@@ -98,32 +147,33 @@ fun MojBrojScreen(
                             ) {
                                 Text(
                                     state.roundResultMessage ?: "",
-                                    color = Gold, style = MaterialTheme.typography.bodySmall,
+                                    color = Gold,
+                                    style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.SemiBold,
                                     textAlign = TextAlign.Center
                                 )
-                                HorizontalDivider(color = Gold.copy(alpha = 0.2f))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Ti", color = MediumGray, style = MaterialTheme.typography.labelSmall)
-                                        Text(
-                                            "${state.myRoundResult ?: "—"}",
-                                            color = if (state.myRoundResult == state.targetNumber) SuccessGreen else LightGray,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 18.sp
-                                        )
-                                    }
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Protivnik", color = MediumGray, style = MaterialTheme.typography.labelSmall)
-                                        Text(
-                                            "${state.opponentRoundResult ?: "—"}",
-                                            color = if (state.opponentRoundResult == state.targetNumber) SuccessGreen else LightGray,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 18.sp
-                                        )
+                                if (state.myRoundResult != null || state.opponentRoundResult != null) {
+                                    HorizontalDivider(color = Gold.copy(alpha = 0.2f))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Ti", color = MediumGray, style = MaterialTheme.typography.labelSmall)
+                                            Text(
+                                                "${state.myRoundResult ?: "—"}",
+                                                color = if (state.myRoundResult == state.targetNumber) SuccessGreen else LightGray,
+                                                fontWeight = FontWeight.Bold, fontSize = 18.sp
+                                            )
+                                        }
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(oppName, color = MediumGray, style = MaterialTheme.typography.labelSmall)
+                                            Text(
+                                                "${state.opponentRoundResult ?: "—"}",
+                                                color = if (state.opponentRoundResult == state.targetNumber) SuccessGreen else LightGray,
+                                                fontWeight = FontWeight.Bold, fontSize = 18.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -135,15 +185,14 @@ fun MojBrojScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         // Target number card
-                        val isWaiting = state.phase == MojBrojPhase.WAITING_FIRST_STOP || state.phase == MojBrojPhase.WAITING_SECOND_STOP
-                        val isRevealed = !isWaiting
+                        val targetRevealed = !isWaiting || state.phase == MojBrojPhase.WAITING_STOP2
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isRevealed) PrimaryBlue.copy(alpha = 0.2f) else NavyCard
+                                containerColor = if (targetRevealed) PrimaryBlue.copy(alpha = 0.2f) else NavyCard
                             ),
-                            border = if (isRevealed)
+                            border = if (targetRevealed)
                                 androidx.compose.foundation.BorderStroke(1.5.dp, GameMojBroj.copy(alpha = 0.6f))
                             else
                                 androidx.compose.foundation.BorderStroke(1.dp, NavyCardLight)
@@ -158,7 +207,7 @@ fun MojBrojScreen(
                                     fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                AnimatedContent(targetState = isRevealed) { revealed ->
+                                AnimatedContent(targetState = targetRevealed) { revealed ->
                                     if (revealed) {
                                         Text(
                                             "${state.targetNumber}",
@@ -184,8 +233,8 @@ fun MojBrojScreen(
                             }
                         }
 
-                        // STOP button — separate, prominent, below the card
-                        if (isWaiting) {
+                        // STOP button — visible only to the stop controller
+                        if (showStopButton) {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -202,7 +251,7 @@ fun MojBrojScreen(
                                     Text("STOP", color = Navy, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                                 }
                                 Text(
-                                    text = if (state.phase == MojBrojPhase.WAITING_SECOND_STOP)
+                                    text = if (state.phase == MojBrojPhase.WAITING_STOP2)
                                         "${state.waitingForStopTimeLeft}s do automatskog otkrivanja"
                                     else
                                         "Pritisni STOP ili tresni uređaj",
@@ -212,11 +261,52 @@ fun MojBrojScreen(
                             }
                         }
 
+                        // Placeholder shown to the non-controller while waiting for stop
+                        if (showWaitForStop) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = NavyCard),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, LineSoft)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = GameMojBroj
+                                    )
+                                    Text(
+                                        if (state.phase == MojBrojPhase.WAITING_STOP2)
+                                            "$oppName bira kad će brojevi biti prikazani..."
+                                        else
+                                            "$oppName pokreće rundu ${state.currentRound}...",
+                                        color = LightGray,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+
                         // Available numbers
-                        AnimatedVisibility(visible = state.phase == MojBrojPhase.PLAYING || state.phase == MojBrojPhase.SUBMITTED) {
+                        AnimatedVisibility(
+                            visible = state.phase == MojBrojPhase.PLAYING ||
+                                      state.phase == MojBrojPhase.SUBMITTED
+                        ) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Vaši brojevi", color = LightGray, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    "Vaši brojevi",
+                                    color = LightGray,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     state.availableNumbers.forEachIndexed { index, num ->
                                         val isUsed = index in state.usedNumberIndices
                                         MojBrojNumberButton(
@@ -230,30 +320,45 @@ fun MojBrojScreen(
                         }
 
                         // Expression builder
-                        AnimatedVisibility(visible = state.phase == MojBrojPhase.PLAYING || state.phase == MojBrojPhase.SUBMITTED) {
+                        AnimatedVisibility(
+                            visible = state.phase == MojBrojPhase.PLAYING ||
+                                      state.phase == MojBrojPhase.SUBMITTED
+                        ) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
                                     colors = CardDefaults.cardColors(containerColor = NavyCard)
                                 ) {
                                     Column(modifier = Modifier.padding(12.dp)) {
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
                                             Text("Vaš izraz", color = LightGray, style = MaterialTheme.typography.labelSmall)
                                             state.expressionResult?.let { res ->
                                                 val resColor = if (res == state.targetNumber) SuccessGreen else LightGray
-                                                Text("= $res", color = resColor, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                                Text(
+                                                    "= $res", color = resColor,
+                                                    fontWeight = FontWeight.Bold,
+                                                    style = MaterialTheme.typography.labelSmall
+                                                )
                                             }
                                         }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             text = state.expression.ifEmpty { "Unesite izraz..." },
                                             color = if (state.expression.isEmpty()) MediumGray else White,
-                                            style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, minLines = 2
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Medium,
+                                            minLines = 2
                                         )
                                     }
                                 }
 
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     listOf("+", "-", "×", "÷", "(", ")").forEach { op ->
                                         MojBrojOperatorButton(operator = op, modifier = Modifier.weight(1f)) {
                                             val actualOp = when (op) { "×" -> "*"; "÷" -> "/"; else -> op }
@@ -262,7 +367,10 @@ fun MojBrojScreen(
                                     }
                                 }
 
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     OutlinedButton(
                                         onClick = { viewModel.backspace() },
                                         modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp),

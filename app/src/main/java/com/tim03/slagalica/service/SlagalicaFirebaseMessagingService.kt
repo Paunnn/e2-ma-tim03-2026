@@ -15,8 +15,9 @@ class SlagalicaFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        FirebaseFirestore.getInstance().collection("users").document(uid)
+        val user = FirebaseAuth.getInstance().currentUser ?: return
+        if (user.isAnonymous) return
+        FirebaseFirestore.getInstance().collection("users").document(user.uid)
             .update("fcmToken", token)
     }
 

@@ -22,6 +22,34 @@ class KorakPoKorakRepository {
         }
     }
 
+    suspend fun getTwoQuestions(): Pair<KorakPoKorakQuestion, KorakPoKorakQuestion> {
+        return try {
+            val snapshot = firestore.collection("korak_po_korak").get().await()
+            if (snapshot.isEmpty) return Pair(fallbackQuestion(), fallbackQuestion())
+            val docs = snapshot.documents.shuffled()
+            fun toQ(doc: com.google.firebase.firestore.DocumentSnapshot) = KorakPoKorakQuestion(
+                id = doc.id,
+                answer = doc.getString("answer") ?: "",
+                steps = (doc.get("steps") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+            )
+            Pair(toQ(docs[0]), toQ(docs.getOrElse(1) { docs[0] }))
+        } catch (e: Exception) {
+            Pair(fallbackQuestion(), fallbackQuestion())
+        }
+    }
+
+    suspend fun getQuestionById(id: String): KorakPoKorakQuestion {
+        return try {
+            val doc = firestore.collection("korak_po_korak").document(id).get().await()
+            if (!doc.exists()) return fallbackQuestion()
+            KorakPoKorakQuestion(
+                id = doc.id,
+                answer = doc.getString("answer") ?: "",
+                steps = (doc.get("steps") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+            )
+        } catch (e: Exception) { fallbackQuestion() }
+    }
+
     private fun fallbackQuestion() = KorakPoKorakQuestion(
         id = "local_1",
         answer = "Steve Jobs",

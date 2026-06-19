@@ -26,6 +26,7 @@ import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.SkockoAttemptResult
 import com.tim03.slagalica.viewmodel.SkockoPhase
 import com.tim03.slagalica.viewmodel.SkockoViewModel
+import com.tim03.slagalica.viewmodel.SkockoViewModelFactory
 import kotlinx.coroutines.delay
 
 private data class SkockoSymbolDef(val kind: String, val color: Color)
@@ -47,8 +48,14 @@ fun SkockoScreen(
     onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
     myScoreOffset: Int = 0,
     oppScoreOffset: Int = 0,
-    viewModel: SkockoViewModel = viewModel()
+    sessionId: String = "",
+    isPlayer1: Boolean = true,
+    gameIdx: Int = -1,
+    oppName: String = "Protivnik"
 ) {
+    val viewModel: SkockoViewModel = viewModel(
+        factory = SkockoViewModelFactory(sessionId, isPlayer1, gameIdx)
+    )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     val isInteractive = state.phase == SkockoPhase.MY_TURN || state.phase == SkockoPhase.MY_BONUS
@@ -71,11 +78,16 @@ fun SkockoScreen(
                 gameName = "Skočko",
                 gameColor = GameSkocko,
                 gameIcon = "S",
-                round = "Pokušaj ${state.myAttempts.size + 1}/6",
+                round = when (state.phase) {
+                SkockoPhase.WAITING_OPPONENT -> "Protivnik ${state.opponentAttempts.size + 1}/6"
+                SkockoPhase.MY_BONUS, SkockoPhase.OPPONENT_BONUS_R1 -> "Bonus pokušaj"
+                else -> "Pokušaj ${state.myAttempts.size + 1}/6"
+            },
                 timeLeft = state.timeLeft,
                 totalTime = maxTimer.toInt(),
                 myScore = state.myScore + myScoreOffset,
                 oppScore = state.opponentScore + oppScoreOffset,
+                oppName = oppName,
                 onExit = onExitClick
             )
         }
@@ -141,7 +153,11 @@ fun SkockoScreen(
                 }
 
                 Text(
-                    text = if (showingOpponentAttempts) "Pokušaji protivnika (Runda 2)" else "Pokušaji (Runda 1)",
+                    text = when {
+                        !showingOpponentAttempts -> "Pokušaji (Runda ${state.currentRound})"
+                        state.currentRound == 1 -> "Pokušaji protivnika (Runda 1)"
+                        else -> "Pokušaji protivnika (Runda 2)"
+                    },
                     color = LightGray,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold
@@ -171,16 +187,38 @@ fun SkockoScreen(
                         letterSpacing = 1.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    val bonusResult = state.bonusAttemptResult
                     SkockoAttemptRow(
                         rowIndex = 6,
-                        attempt = null,
-                        isCurrent = true,
-                        currentSymbols = state.currentInput
+                        attempt = bonusResult,
+                        isCurrent = bonusResult == null,
+                        currentSymbols = if (bonusResult == null) state.currentInput else null
                     )
                 }
 
-                // R1 solution shown briefly after round 1 ends, before round 2 starts
-                if (state.showRound1Solution) {
+                // OPPONENT_BONUS_R1: show opponent's bonus attempt result once it arrives
+                if (state.phase == SkockoPhase.OPPONENT_BONUS_R1 && state.bonusAttemptResult != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = Accent2.copy(alpha = 0.4f))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "BONUS POKUŠAJ PROTIVNIKA",
+                        color = Accent2,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SkockoAttemptRow(
+                        rowIndex = 6,
+                        attempt = state.bonusAttemptResult,
+                        isCurrent = false,
+                        currentSymbols = null
+                    )
+                }
+
+                // Solution reveal card (shown between rounds or after each round in multiplayer)
+                if (state.showSolution && state.revealedSolution.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -190,19 +228,20 @@ fun SkockoScreen(
                     ) {
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "REŠENJE RUNDE 1",
+                                "REŠENJE RUNDE ${state.currentRound}",
                                 color = Gold, fontSize = 10.sp,
                                 fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp
                             )
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                state.mySolution.forEach { symIdx -> SkockoSlot(symbolIndex = symIdx, isCurrent = false) }
+                                state.revealedSolution.forEach { symIdx -> SkockoSlot(symbolIndex = symIdx, isCurrent = false) }
                             }
                         }
                     }
                 }
 
-                // GAME_OVER: reveal R2 solution only (R1 was already shown after round 1)
+                // GAME_OVER: reveal R2 solution (R1 was already shown after round 1)
                 if (state.phase == SkockoPhase.GAME_OVER) {
+                    val displaySolution = state.revealedSolution.ifEmpty { state.opponentSolution }
                     Spacer(modifier = Modifier.height(8.dp))
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -217,7 +256,7 @@ fun SkockoScreen(
                                 fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp
                             )
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                state.opponentSolution.forEach { symIdx -> SkockoSlot(symbolIndex = symIdx, isCurrent = false) }
+                                displaySolution.forEach { symIdx -> SkockoSlot(symbolIndex = symIdx, isCurrent = false) }
                             }
                         }
                     }

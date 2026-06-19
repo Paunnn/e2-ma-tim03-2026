@@ -12,6 +12,9 @@ sealed class Screen(val route: String) {
     object Spojnice : Screen("game/spojnice")
     object Asocijacije : Screen("game/asocijacije")
     object Skocko : Screen("game/skocko")
-    object Partija : Screen("partija")
+    object Matchmaking : Screen("matchmaking")
+    object Partija : Screen("partija/{sessionId}/{isPlayer1}") {
+        fun createRoute(sessionId: String, isPlayer1: Boolean) = "partija/$sessionId/$isPlayer1"
+    }
     object Notifications : Screen("notifications")
 }

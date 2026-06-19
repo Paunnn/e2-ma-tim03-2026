@@ -25,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.AsocijacijePhase
 import com.tim03.slagalica.viewmodel.AsocijacijeViewModel
+import com.tim03.slagalica.viewmodel.AsocijacijeViewModelFactory
 
 private val columnColors = listOf(
     PrimaryBlueBright,
@@ -41,8 +42,14 @@ fun AsocijacijeScreen(
     onPartijaGameComplete: (Int, Int) -> Unit = { _, _ -> },
     myScoreOffset: Int = 0,
     oppScoreOffset: Int = 0,
-    viewModel: AsocijacijeViewModel = viewModel()
+    sessionId: String = "",
+    isPlayer1: Boolean = true,
+    gameIdx: Int = -1,
+    oppName: String = "Protivnik"
 ) {
+    val viewModel: AsocijacijeViewModel = viewModel(
+        factory = AsocijacijeViewModelFactory(sessionId, isPlayer1, gameIdx)
+    )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(state.phase) {
@@ -79,6 +86,7 @@ fun AsocijacijeScreen(
                 totalTime = 120,
                 myScore = state.myScore + myScoreOffset,
                 oppScore = state.opponentScore + oppScoreOffset,
+                oppName = oppName,
                 onExit = onExitClick
             )
         }
@@ -104,6 +112,18 @@ fun AsocijacijeScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 val question = state.currentQuestion
+
+                if (question == null && state.waitingMessage != null) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        androidx.compose.foundation.layout.Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(color = GameAsocijacije)
+                            Text(state.waitingMessage ?: "", color = LightGray, textAlign = TextAlign.Center)
+                        }
+                    }
+                }
 
                 if (question != null) {
                     // Column headers
@@ -213,6 +233,28 @@ fun AsocijacijeScreen(
                     if (state.phase == AsocijacijePhase.GAME_OVER && !isPartijaMode) {
                         Spacer(modifier = Modifier.height(8.dp))
                         AsocijacijeResultCard(state.myScore, state.opponentScore)
+                    }
+                }
+            }
+
+            // Opponent-turn banner (multiplayer only)
+            if (state.phase == AsocijacijePhase.OPPONENT_TURN && sessionId.isNotEmpty() && !state.revealAll) {
+                Surface(color = NavyLight, shadowElevation = 4.dp) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .navigationBarsPadding(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(Icons.Default.SmartToy, null, tint = Accent2, modifier = Modifier.size(18.dp))
+                        Text(
+                            "$oppName igra, čekaj na red",
+                            color = Accent2,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }

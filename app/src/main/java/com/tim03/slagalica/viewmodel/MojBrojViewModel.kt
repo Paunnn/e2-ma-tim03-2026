@@ -7,7 +7,11 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.firestore.ListenerRegistration
+import com.tim03.slagalica.data.repository.MultiplayerGameRepository
 import com.tim03.slagalica.data.repository.UserRepository
 import com.tim03.slagalica.util.evalExpression
 import com.tim03.slagalica.util.removeLastToken
@@ -19,14 +23,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sqrt
-import kotlin.math.sqrt
 
+// Multiplayer phases: mb_r1_s1 → mb_r1_s2 → mb_r1_play → mb_r2_s1 → mb_r2_s2 → mb_r2_play → mb_done
+// Both players play each round simultaneously. P1 controls STOP in R1; P2 controls STOP in R2.
 enum class MojBrojPhase {
-    WAITING_FIRST_STOP,
-    WAITING_SECOND_STOP,
+    WAITING_STOP1,   // before first STOP click (target hidden)
+    WAITING_STOP2,   // after first STOP click (target visible, 5s countdown)
     PLAYING,
-    SUBMITTED,
-    OPPONENT_TURN,
+    SUBMITTED,       // submitted, waiting for opponent; or showing round result
     GAME_OVER
 }
 
@@ -42,20 +46,29 @@ data class MojBrojUiState(
     val waitingForStopTimeLeft: Int = 5,
     val myScore: Int = 0,
     val opponentScore: Int = 0,
-    val phase: MojBrojPhase = MojBrojPhase.WAITING_FIRST_STOP,
-    val myRoundExpression: String = "",
+    val phase: MojBrojPhase = MojBrojPhase.WAITING_STOP1,
     val myRoundResult: Int? = null,
     val opponentRoundResult: Int? = null,
     val roundResultMessage: String? = null,
-    val gameOver: Boolean = false
+    val gameOver: Boolean = false,
+    val waitingMessage: String? = null,
 )
 
-class MojBrojViewModel(application: Application) : AndroidViewModel(application) {
+@Suppress("UNCHECKED_CAST")
+class MojBrojViewModel @JvmOverloads constructor(
+    application: Application,
+    private val sessionId: String = "",
+    private val isPlayer1: Boolean = true,
+    private val gameIdx: Int = -1,
+    private val userRepo: UserRepository = UserRepository(),
+    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository()
+) : AndroidViewModel(application) {
+
+    val isMultiplayer = sessionId.isNotEmpty()
 
     private val _uiState = MutableStateFlow(MojBrojUiState())
     val uiState: StateFlow<MojBrojUiState> = _uiState.asStateFlow()
 
-    private val userRepo = UserRepository()
     private val _username = MutableStateFlow("Igrač")
     val username: StateFlow<String> = _username.asStateFlow()
 
@@ -64,9 +77,21 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
 
     private var timerJob: Job? = null
     private var stopWindowJob: Job? = null
-    private var sensorManager: SensorManager =
+    private var mpListener: ListenerRegistration? = null
+    private var lastHandledPhase = ""
+
+    // Cached game data (set when mb_r1_s1 fires)
+    private var mpR1Target = 0; private var mpR1Nums = emptyList<Int>()
+    private var mpR2Target = 0; private var mpR2Nums = emptyList<Int>()
+
+    // Guards to prevent double-transition (each player independently detects "both submitted")
+    private var r1TransitionDone = false
+    private var r2TransitionDone = false
+
+    private val sensorManager: SensorManager =
         application.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    private var accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    private val accelerometer: Sensor? =
+        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private var lastShakeTime = 0L
 
     private val shakeListener = object : SensorEventListener {
@@ -75,10 +100,7 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
             val acceleration = sqrt(x * x + y * y + z * z) - SensorManager.GRAVITY_EARTH
             if (acceleration > SHAKE_THRESHOLD) {
                 val now = System.currentTimeMillis()
-                if (now - lastShakeTime > 1000L) {
-                    lastShakeTime = now
-                    onShake()
-                }
+                if (now - lastShakeTime > 1000L) { lastShakeTime = now; onShake() }
             }
         }
         override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
@@ -88,15 +110,247 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
         accelerometer?.let {
             sensorManager.registerListener(shakeListener, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
-        startRound(1)
+        if (isMultiplayer) startMultiplayerGame() else startRound(1)
         viewModelScope.launch {
             runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
         }
     }
 
-    private fun startRound(round: Int) {
-        timerJob?.cancel()
+    // ─── Multiplayer flow ───
+
+    private fun startMultiplayerGame() {
+        viewModelScope.launch {
+            if (isPlayer1) {
+                val r1Target = generateTarget(); val r1Nums = generateNumbers()
+                val r2Target = generateTarget(); val r2Nums = generateNumbers()
+                mpR1Target = r1Target; mpR1Nums = r1Nums
+                mpR2Target = r2Target; mpR2Nums = r2Nums
+                mpRepo.initGame(
+                    sessionId, gameIdx, "mb_r1_s1",
+                    mapOf(
+                        "r1Target" to r1Target.toLong(),
+                        "r1Nums"   to r1Nums.map { it.toLong() },
+                        "r2Target" to r2Target.toLong(),
+                        "r2Nums"   to r2Nums.map { it.toLong() },
+                        "r1P1" to -1L, "r1P2" to -1L,
+                        "r2P1" to -1L, "r2P2" to -1L
+                    )
+                )
+            }
+            listenForMultiplayerPhase()
+        }
+    }
+
+    private fun listenForMultiplayerPhase() {
+        mpListener?.remove()
+        mpListener = mpRepo.listenToGameState(sessionId) { gIdx, phase, data ->
+            if (gIdx != gameIdx) return@listenToGameState
+            if (phase != lastHandledPhase) {
+                lastHandledPhase = phase
+                handleMpPhase(phase, data)
+            } else {
+                handleMpLiveUpdate(phase, data)
+            }
+        }
+    }
+
+    private fun handleMpPhase(phase: String, data: Map<String, Any>) {
+        fun intVal(key: String) = (data[key] as? Long)?.toInt() ?: 0
+        fun listInts(key: String) = (data[key] as? List<*>)
+            ?.mapNotNull { (it as? Long)?.toInt() } ?: emptyList()
+
+        when (phase) {
+            "mb_r1_s1" -> {
+                mpR1Target = intVal("r1Target"); mpR1Nums = listInts("r1Nums")
+                mpR2Target = intVal("r2Target"); mpR2Nums = listInts("r2Nums")
+                timerJob?.cancel(); stopWindowJob?.cancel()
+                _uiState.value = MojBrojUiState(
+                    currentRound = 1,
+                    targetNumber = mpR1Target,
+                    availableNumbers = mpR1Nums,
+                    phase = MojBrojPhase.WAITING_STOP1,
+                    timeLeft = 60,
+                    waitingMessage = if (!isPlayer1) "Protivnik pokreće igru..." else null
+                )
+            }
+            "mb_r1_s2" -> {
+                timerJob?.cancel(); stopWindowJob?.cancel()
+                _uiState.value = _uiState.value.copy(
+                    phase = MojBrojPhase.WAITING_STOP2,
+                    waitingForStopTimeLeft = 5,
+                    waitingMessage = if (!isPlayer1) "Protivnik bira brojeve..." else null
+                )
+                // Only P1 (stop controller in R1) runs the 5-second auto-reveal countdown.
+                if (isPlayer1) startStopCountdown("mb_r1_play")
+            }
+            "mb_r1_play" -> {
+                timerJob?.cancel(); stopWindowJob?.cancel()
+                _uiState.value = _uiState.value.copy(
+                    phase = MojBrojPhase.PLAYING, timeLeft = 60,
+                    waitingMessage = null,
+                    expression = "", usedNumberIndices = emptySet(),
+                    expressionIndices = emptyList(), expressionResult = null
+                )
+                startMainTimerMp()
+            }
+            "mb_r2_s1" -> {
+                timerJob?.cancel(); stopWindowJob?.cancel()
+                val prev = _uiState.value
+                _uiState.value = MojBrojUiState(
+                    currentRound = 2,
+                    targetNumber = mpR2Target,
+                    availableNumbers = mpR2Nums,
+                    myScore = prev.myScore,
+                    opponentScore = prev.opponentScore,
+                    phase = MojBrojPhase.WAITING_STOP1,
+                    timeLeft = 60,
+                    roundResultMessage = prev.roundResultMessage, // show R1 result while waiting
+                    waitingMessage = if (isPlayer1) "Protivnik pokreće rundu 2..." else null
+                )
+            }
+            "mb_r2_s2" -> {
+                timerJob?.cancel(); stopWindowJob?.cancel()
+                _uiState.value = _uiState.value.copy(
+                    phase = MojBrojPhase.WAITING_STOP2,
+                    waitingForStopTimeLeft = 5,
+                    waitingMessage = if (isPlayer1) "Protivnik bira brojeve..." else null
+                )
+                // Only P2 (stop controller in R2) runs the 5-second auto-reveal countdown.
+                if (!isPlayer1) startStopCountdown("mb_r2_play")
+            }
+            "mb_r2_play" -> {
+                timerJob?.cancel(); stopWindowJob?.cancel()
+                _uiState.value = _uiState.value.copy(
+                    phase = MojBrojPhase.PLAYING, timeLeft = 60,
+                    roundResultMessage = null, waitingMessage = null,
+                    expression = "", usedNumberIndices = emptySet(),
+                    expressionIndices = emptyList(), expressionResult = null
+                )
+                startMainTimerMp()
+            }
+            "mb_done" -> {
+                timerJob?.cancel(); stopWindowJob?.cancel()
+                // Re-compute final scores from authoritative Firestore data.
+                val r1P1 = (data["r1P1"] as? Long)?.takeIf { it != -1L }
+                val r1P2 = (data["r1P2"] as? Long)?.takeIf { it != -1L }
+                val r2P1 = (data["r2P1"] as? Long)?.takeIf { it != -1L }
+                val r2P2 = (data["r2P2"] as? Long)?.takeIf { it != -1L }
+                val r1Score = computeMpRoundScore(mpR1Target,
+                    r1P1?.let { if (it == -2L) null else it.toInt() },
+                    r1P2?.let { if (it == -2L) null else it.toInt() }, true)
+                val r2Score = computeMpRoundScore(mpR2Target,
+                    r2P1?.let { if (it == -2L) null else it.toInt() },
+                    r2P2?.let { if (it == -2L) null else it.toInt() }, false)
+                val p1Total = r1Score.first + r2Score.first
+                val p2Total = r1Score.second + r2Score.second
+                val myFinal  = if (isPlayer1) p1Total else p2Total
+                val oppFinal = if (isPlayer1) p2Total else p1Total
+                _uiState.value = _uiState.value.copy(
+                    myScore = myFinal, opponentScore = oppFinal,
+                    phase = MojBrojPhase.GAME_OVER, gameOver = true
+                )
+                endGameSave(myFinal, oppFinal)
+            }
+        }
+    }
+
+    // Called for same-phase Firestore updates (results arriving while phase stays unchanged).
+    private fun handleMpLiveUpdate(phase: String, data: Map<String, Any>) {
+        when (phase) {
+            "mb_r1_play" -> {
+                val r1P1 = data["r1P1"] as? Long ?: -1L
+                val r1P2 = data["r1P2"] as? Long ?: -1L
+                if (r1P1 == -1L || r1P2 == -1L || r1TransitionDone) return
+                r1TransitionDone = true
+                timerJob?.cancel()
+                val r1P1Int = if (r1P1 == -2L) null else r1P1.toInt()
+                val r1P2Int = if (r1P2 == -2L) null else r1P2.toInt()
+                val score   = computeMpRoundScore(mpR1Target, r1P1Int, r1P2Int, true)
+                val myPts   = if (isPlayer1) score.first  else score.second
+                val oppPts  = if (isPlayer1) score.second else score.first
+                _uiState.value = _uiState.value.copy(
+                    phase = MojBrojPhase.SUBMITTED,
+                    myScore = myPts, opponentScore = oppPts,
+                    myRoundResult  = if (isPlayer1) r1P1Int else r1P2Int,
+                    opponentRoundResult = if (isPlayer1) r1P2Int else r1P1Int,
+                    roundResultMessage = score.third,
+                    waitingMessage = null
+                )
+                // P1 is the designated writer for the R1→R2 transition.
+                if (isPlayer1) viewModelScope.launch {
+                    delay(2500L)
+                    mpRepo.setPhase(sessionId, "mb_r2_s1")
+                }
+            }
+            "mb_r2_play" -> {
+                val r2P1 = data["r2P1"] as? Long ?: -1L
+                val r2P2 = data["r2P2"] as? Long ?: -1L
+                if (r2P1 == -1L || r2P2 == -1L || r2TransitionDone) return
+                r2TransitionDone = true
+                timerJob?.cancel()
+                val r1P1 = data["r1P1"] as? Long ?: -1L
+                val r1P2 = data["r1P2"] as? Long ?: -1L
+                val r1P1Int = if (r1P1 == -2L) null else r1P1.toInt()
+                val r1P2Int = if (r1P2 == -2L) null else r1P2.toInt()
+                val r2P1Int = if (r2P1 == -2L) null else r2P1.toInt()
+                val r2P2Int = if (r2P2 == -2L) null else r2P2.toInt()
+                val r1Score = computeMpRoundScore(mpR1Target, r1P1Int, r1P2Int, true)
+                val r2Score = computeMpRoundScore(mpR2Target, r2P1Int, r2P2Int, false)
+                val p1Total = r1Score.first + r2Score.first
+                val p2Total = r1Score.second + r2Score.second
+                val myFinal  = if (isPlayer1) p1Total else p2Total
+                val oppFinal = if (isPlayer1) p2Total else p1Total
+                _uiState.value = _uiState.value.copy(
+                    phase = MojBrojPhase.SUBMITTED,
+                    myScore = myFinal, opponentScore = oppFinal,
+                    myRoundResult  = if (isPlayer1) r2P1Int else r2P2Int,
+                    opponentRoundResult = if (isPlayer1) r2P2Int else r2P1Int,
+                    roundResultMessage = r2Score.third,
+                    waitingMessage = null
+                )
+                // P2 is the designated writer for the R2→done transition.
+                if (!isPlayer1) viewModelScope.launch {
+                    delay(2500L)
+                    mpRepo.setPhase(sessionId, "mb_done")
+                }
+            }
+        }
+    }
+
+    // 5-second countdown after target is revealed; auto-writes nextMpPhase when it hits 0.
+    private fun startStopCountdown(nextMpPhase: String) {
         stopWindowJob?.cancel()
+        stopWindowJob = viewModelScope.launch {
+            var t = 5
+            while (t > 0) {
+                delay(1000L); t--
+                _uiState.value = _uiState.value.copy(waitingForStopTimeLeft = t)
+            }
+            if (_uiState.value.phase == MojBrojPhase.WAITING_STOP2) {
+                mpRepo.setPhase(sessionId, nextMpPhase)
+            }
+        }
+    }
+
+    // Multiplayer 60s play timer — starts when numbers are revealed.
+    private fun startMainTimerMp() {
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            while (_uiState.value.timeLeft > 0) {
+                delay(1000L)
+                val s = _uiState.value
+                if (s.phase == MojBrojPhase.SUBMITTED || s.phase == MojBrojPhase.GAME_OVER) break
+                _uiState.value = s.copy(timeLeft = s.timeLeft - 1)
+            }
+            val p = _uiState.value.phase
+            if (p != MojBrojPhase.SUBMITTED && p != MojBrojPhase.GAME_OVER) submitRound()
+        }
+    }
+
+    // ─── Single-player game flow ───
+
+    private fun startRound(round: Int) {
+        timerJob?.cancel(); stopWindowJob?.cancel()
         val target = generateTarget()
         val numbers = generateNumbers()
         _uiState.value = MojBrojUiState(
@@ -105,7 +359,7 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
             availableNumbers = numbers,
             myScore = _uiState.value.myScore,
             opponentScore = _uiState.value.opponentScore,
-            phase = MojBrojPhase.WAITING_FIRST_STOP,
+            phase = MojBrojPhase.WAITING_STOP1,
             timeLeft = 60
         )
         startMainTimer()
@@ -120,9 +374,7 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
                 if (phase == MojBrojPhase.SUBMITTED || phase == MojBrojPhase.GAME_OVER) break
                 val newTime = _uiState.value.timeLeft - 1
                 _uiState.value = _uiState.value.copy(timeLeft = newTime)
-
-                // Auto-reveal after 5s without first STOP
-                if (newTime == 55 && _uiState.value.phase == MojBrojPhase.WAITING_FIRST_STOP) {
+                if (newTime == 55 && _uiState.value.phase == MojBrojPhase.WAITING_STOP1) {
                     revealTargetAndNumbers()
                 }
             }
@@ -134,33 +386,47 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun pressStop() {
-        when (_uiState.value.phase) {
-            MojBrojPhase.WAITING_FIRST_STOP -> revealTarget()
-            MojBrojPhase.WAITING_SECOND_STOP -> revealNumbers()
-            else -> {}
+        val state = _uiState.value
+        if (isMultiplayer) {
+            // Only the round's stop controller can press STOP.
+            val isController = (state.currentRound == 1 && isPlayer1) ||
+                               (state.currentRound == 2 && !isPlayer1)
+            if (!isController || state.waitingMessage != null) return
+            when (state.phase) {
+                MojBrojPhase.WAITING_STOP1 -> {
+                    val next = if (state.currentRound == 1) "mb_r1_s2" else "mb_r2_s2"
+                    viewModelScope.launch { mpRepo.setPhase(sessionId, next) }
+                }
+                MojBrojPhase.WAITING_STOP2 -> {
+                    stopWindowJob?.cancel()
+                    val next = if (state.currentRound == 1) "mb_r1_play" else "mb_r2_play"
+                    viewModelScope.launch { mpRepo.setPhase(sessionId, next) }
+                }
+                else -> {}
+            }
+        } else {
+            when (state.phase) {
+                MojBrojPhase.WAITING_STOP1 -> revealTarget()
+                MojBrojPhase.WAITING_STOP2 -> revealNumbers()
+                else -> {}
+            }
         }
     }
 
-    private fun onShake() {
-        pressStop()
-    }
+    private fun onShake() { pressStop() }
 
     private fun revealTarget() {
         stopWindowJob?.cancel()
         _uiState.value = _uiState.value.copy(
-            phase = MojBrojPhase.WAITING_SECOND_STOP,
-            waitingForStopTimeLeft = 5
+            phase = MojBrojPhase.WAITING_STOP2, waitingForStopTimeLeft = 5
         )
         stopWindowJob = viewModelScope.launch {
             var t = 5
             while (t > 0) {
-                delay(1000L)
-                t--
+                delay(1000L); t--
                 _uiState.value = _uiState.value.copy(waitingForStopTimeLeft = t)
             }
-            if (_uiState.value.phase == MojBrojPhase.WAITING_SECOND_STOP) {
-                revealNumbers()
-            }
+            if (_uiState.value.phase == MojBrojPhase.WAITING_STOP2) revealNumbers()
         }
     }
 
@@ -174,6 +440,8 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
         _uiState.value = _uiState.value.copy(phase = MojBrojPhase.PLAYING)
     }
 
+    // ─── Expression editing ───
+
     fun appendNumber(index: Int) {
         val state = _uiState.value
         if (state.phase != MojBrojPhase.PLAYING) return
@@ -181,11 +449,7 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
         val num = state.availableNumbers[index]
         val newExpr = if (state.expression.isEmpty() ||
             state.expression.last().let { it == '+' || it == '-' || it == '*' || it == '/' || it == '(' }
-        ) {
-            state.expression + num
-        } else {
-            "${state.expression} $num"
-        }
+        ) state.expression + num else "${state.expression} $num"
         val newIndices = state.expressionIndices + index
         _uiState.value = state.copy(
             expression = newExpr,
@@ -198,10 +462,9 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
     fun appendOperator(op: String) {
         val state = _uiState.value
         if (state.phase != MojBrojPhase.PLAYING) return
-        val newExpr = state.expression + op
         _uiState.value = state.copy(
-            expression = newExpr,
-            expressionResult = evalExpression(newExpr)
+            expression = state.expression + op,
+            expressionResult = evalExpression(state.expression + op)
         )
     }
 
@@ -211,9 +474,7 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
         val removedNumber = state.expression.trimEnd().lastOrNull()?.isDigit() == true
         val newExpr = removeLastToken(state.expression)
         val newIndices = if (removedNumber && state.expressionIndices.isNotEmpty())
-            state.expressionIndices.dropLast(1)
-        else
-            state.expressionIndices
+            state.expressionIndices.dropLast(1) else state.expressionIndices
         _uiState.value = state.copy(
             expression = newExpr,
             usedNumberIndices = newIndices.toSet(),
@@ -233,94 +494,140 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    // ─── Submit ───
+
     fun submitRound() {
         val state = _uiState.value
         if (state.phase == MojBrojPhase.SUBMITTED || state.phase == MojBrojPhase.GAME_OVER) return
-        timerJob?.cancel()
-        stopWindowJob?.cancel()
+        timerJob?.cancel(); stopWindowJob?.cancel()
 
         val myResult = state.expressionResult
         val target = state.targetNumber
         if (myResult == target) mojBrojHitsLocal++
 
-        // Simulate opponent result (opponent also plays simultaneously in each round)
-        val opponentResult = simulateOpponentResult(target, state.availableNumbers)
-        // In round 1, user is the round starter; in round 2, opponent is the round starter
-        val userIsRoundStarter = state.currentRound == 1
-
-        val (myPoints, opponentPoints, message) = scoreRound(target, myResult, opponentResult, userIsRoundStarter)
-
-        _uiState.value = state.copy(
-            phase = MojBrojPhase.SUBMITTED,
-            myScore = state.myScore + myPoints,
-            opponentScore = state.opponentScore + opponentPoints,
-            myRoundResult = myResult,
-            opponentRoundResult = opponentResult,
-            roundResultMessage = message
-        )
-
-        if (state.currentRound < 2) {
-            viewModelScope.launch {
-                delay(2500L)
-                startRound(2)
-            }
+        if (isMultiplayer) {
+            submitRoundMultiplayer(state, myResult)
         } else {
-            val finalMyScore = _uiState.value.myScore
-            val finalOppScore = _uiState.value.opponentScore
-            viewModelScope.launch {
-                delay(2500L)
-                _uiState.value = _uiState.value.copy(phase = MojBrojPhase.GAME_OVER, gameOver = true)
-                if (!resultSaved) {
-                    resultSaved = true
-                    runCatching {
-                        userRepo.saveMojBrojResult(mojBrojHitsLocal, 2)
-                        userRepo.saveGameResult(won = finalMyScore > finalOppScore)
-                    }
+            val opponentResult = simulateOpponentResult(target, state.availableNumbers)
+            val userIsRoundStarter = state.currentRound == 1
+            val (myPoints, opponentPoints, message) = scoreRound(target, myResult, opponentResult, userIsRoundStarter)
+
+            _uiState.value = state.copy(
+                phase = MojBrojPhase.SUBMITTED,
+                myScore = state.myScore + myPoints,
+                opponentScore = state.opponentScore + opponentPoints,
+                myRoundResult = myResult,
+                opponentRoundResult = opponentResult,
+                roundResultMessage = message
+            )
+
+            if (state.currentRound < 2) {
+                viewModelScope.launch { delay(2500L); startRound(2) }
+            } else {
+                val finalMyScore = _uiState.value.myScore
+                val finalOppScore = _uiState.value.opponentScore
+                viewModelScope.launch {
+                    delay(2500L)
+                    _uiState.value = _uiState.value.copy(phase = MojBrojPhase.GAME_OVER, gameOver = true)
+                    endGameSave(finalMyScore, finalOppScore)
                 }
             }
         }
     }
 
-    private fun scoreRound(
-        target: Int,
-        myResult: Int?,
-        opponentResult: Int?,
-        userIsRoundStarter: Boolean
-    ): Triple<Int, Int, String> {
-        val myHit = myResult == target
-        val oppHit = opponentResult == target
+    private fun submitRoundMultiplayer(state: MojBrojUiState, myResult: Int?) {
+        val resultVal = myResult?.toLong() ?: -2L
+        _uiState.value = state.copy(
+            phase = MojBrojPhase.SUBMITTED,
+            myRoundResult = myResult,
+            waitingMessage = "Čekanje na protivnika..."
+        )
+        // Write result only; do NOT change the Firestore phase.
+        // handleMpLiveUpdate detects when both results are in and triggers the transition.
+        val key = when {
+            isPlayer1 && state.currentRound == 1  -> "r1P1"
+            !isPlayer1 && state.currentRound == 1 -> "r1P2"
+            isPlayer1 && state.currentRound == 2  -> "r2P1"
+            else                                   -> "r2P2"
+        }
+        mpRepo.updateGameData(sessionId, mapOf(key to resultVal))
+    }
 
+    // ─── Scoring ───
+
+    private fun computeMpRoundScore(
+        target: Int, p1Result: Int?, p2Result: Int?,
+        isP1Starter: Boolean
+    ): Triple<Int, Int, String> {
+        val p1Hit = p1Result == target
+        val p2Hit = p2Result == target
         return when {
-            myHit && !oppHit -> Triple(10, 0, "Pogodio si traženi broj! +10")
-            oppHit && !myHit -> Triple(0, 10, "Protivnik je pogodio traženi broj")
-            myHit && oppHit -> Triple(10, 10, "Oba igrača su pogodila!")
+            p1Hit && !p2Hit -> Triple(10, 0,
+                if (isPlayer1) "Pogodio si traženi broj! +10" else "Tvoj protivnik pogodio! +10 njemu")
+            p2Hit && !p1Hit -> Triple(0, 10,
+                if (isPlayer1) "Protivnik pogodio! +10 njemu" else "Pogodio si traženi broj! +10")
+            p1Hit && p2Hit  -> Triple(10, 10, "Oba igrača su pogodila! +10 svaki")
             else -> {
-                val myDiff = if (myResult != null && myResult != 0) abs(myResult - target) else Int.MAX_VALUE
-                val oppDiff = if (opponentResult != null && opponentResult != 0) abs(opponentResult - target) else Int.MAX_VALUE
+                val p1Diff = if (p1Result != null && p1Result != 0) abs(p1Result - target) else Int.MAX_VALUE
+                val p2Diff = if (p2Result != null && p2Result != 0) abs(p2Result - target) else Int.MAX_VALUE
                 when {
-                    myDiff < oppDiff -> Triple(5, 0, "Bliže si cilju! +5")
-                    oppDiff < myDiff -> Triple(0, 5, "Protivnik je bliže cilju")
-                    myResult != null && myResult != 0 && myResult == opponentResult -> {
-                        // Same non-zero, non-target result: round starter gets 5 pts
-                        if (userIsRoundStarter) Triple(5, 0, "Isti rezultat – poeni za tebe (+5)")
-                        else Triple(0, 5, "Isti rezultat – poeni za protivnika (+5)")
-                    }
+                    p1Diff < p2Diff -> Triple(5, 0,
+                        if (isPlayer1) "Bliže si cilju! +5" else "Protivnik bliže cilju! +5 njemu")
+                    p2Diff < p1Diff -> Triple(0, 5,
+                        if (isPlayer1) "Protivnik bliže cilju! +5 njemu" else "Bliže si cilju! +5")
+                    p1Result != null && p1Result != 0 && p1Result == p2Result ->
+                        if (isP1Starter)
+                            Triple(5, 0, if (isPlayer1) "Isti rezultat – ti si prvi! +5" else "Isti – protivnik je bio prvi! +5 njemu")
+                        else
+                            Triple(0, 5, if (isPlayer1) "Isti – protivnik je bio prvi! +5 njemu" else "Isti rezultat – ti si prvi! +5")
                     else -> Triple(0, 0, "Niko nije pogodio")
                 }
             }
         }
     }
 
-    private fun simulateOpponentResult(target: Int, numbers: List<Int>): Int? {
-        val chance = (0..2).random()
-        return when (chance) {
-            0 -> target // opponent hits
-            1 -> {
-                val offset = (-30..30).random()
-                val result = target + offset
-                if (result > 0) result else null
+    private fun scoreRound(
+        target: Int, myResult: Int?, opponentResult: Int?,
+        userIsRoundStarter: Boolean
+    ): Triple<Int, Int, String> {
+        val myHit  = myResult == target
+        val oppHit = opponentResult == target
+        return when {
+            myHit && !oppHit -> Triple(10, 0, "Pogodio si traženi broj! +10")
+            oppHit && !myHit -> Triple(0, 10, "Protivnik je pogodio traženi broj")
+            myHit && oppHit  -> Triple(10, 10, "Oba igrača su pogodila!")
+            else -> {
+                val myDiff  = if (myResult != null && myResult != 0) abs(myResult - target) else Int.MAX_VALUE
+                val oppDiff = if (opponentResult != null && opponentResult != 0) abs(opponentResult - target) else Int.MAX_VALUE
+                when {
+                    myDiff < oppDiff  -> Triple(5, 0, "Bliže si cilju! +5")
+                    oppDiff < myDiff  -> Triple(0, 5, "Protivnik je bliže cilju")
+                    myResult != null && myResult != 0 && myResult == opponentResult ->
+                        if (userIsRoundStarter) Triple(5, 0, "Isti rezultat – poeni za tebe (+5)")
+                        else Triple(0, 5, "Isti rezultat – poeni za protivnika (+5)")
+                    else -> Triple(0, 0, "Niko nije pogodio")
+                }
             }
-            else -> null // opponent doesn't answer
+        }
+    }
+
+    private fun simulateOpponentResult(target: Int, @Suppress("UNUSED_PARAMETER") numbers: List<Int>): Int? {
+        return when ((0..2).random()) {
+            0 -> target
+            1 -> { val r = target + (-30..30).random(); if (r > 0) r else null }
+            else -> null
+        }
+    }
+
+    private fun endGameSave(myScore: Int, oppScore: Int) {
+        if (!resultSaved) {
+            resultSaved = true
+            viewModelScope.launch {
+                runCatching {
+                    userRepo.saveMojBrojResult(mojBrojHitsLocal, 2)
+                    userRepo.saveGameResult(won = myScore > oppScore)
+                }
+            }
         }
     }
 
@@ -329,18 +636,28 @@ class MojBrojViewModel(application: Application) : AndroidViewModel(application)
     private fun generateNumbers(): List<Int> {
         val single = (1..4).map { (1..9).random() }
         val medium = listOf(10, 15, 20).random()
-        val large = listOf(25, 50, 75, 100).random()
+        val large  = listOf(25, 50, 75, 100).random()
         return single + medium + large
     }
 
     override fun onCleared() {
         super.onCleared()
         sensorManager.unregisterListener(shakeListener)
-        timerJob?.cancel()
-        stopWindowJob?.cancel()
+        timerJob?.cancel(); stopWindowJob?.cancel(); mpListener?.remove()
     }
 
     companion object {
         private const val SHAKE_THRESHOLD = 12f
     }
+}
+
+class MojBrojViewModelFactory(
+    private val application: Application,
+    private val sessionId: String,
+    private val isPlayer1: Boolean,
+    private val gameIdx: Int
+) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        MojBrojViewModel(application, sessionId, isPlayer1, gameIdx) as T
 }

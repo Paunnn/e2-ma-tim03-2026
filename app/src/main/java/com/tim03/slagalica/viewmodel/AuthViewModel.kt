@@ -116,6 +116,10 @@ class AuthViewModel(
         }
     }
 
+    fun cleanupGuestIfNeeded() {
+        repo.cleanupGuestIfNeeded()
+    }
+
     fun loginAsGuest() {
         viewModelScope.launch {
             _uiState.value = AuthUiState(isLoading = true)
