@@ -28,8 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.tim03.slagalica.data.model.DailyMissions
 import com.tim03.slagalica.ui.components.MozaikBottomNav
 import com.tim03.slagalica.ui.theme.*
+import com.tim03.slagalica.viewmodel.DailyMissionsViewModel
 import com.tim03.slagalica.viewmodel.HomeViewModel
 
 @Composable
@@ -43,11 +45,30 @@ fun HomeScreen(
     onPartijaClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
+    onLeaderboardClick: () -> Unit = {},
+    onTurnirClick: () -> Unit = {},
     onLogout: () -> Unit = {},
     unreadNotifCount: Int = 0,
-    homeViewModel: HomeViewModel = viewModel()
+    homeViewModel: HomeViewModel = viewModel(),
+    missionsViewModel: DailyMissionsViewModel = viewModel()
 ) {
     val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
+    val missions by missionsViewModel.missions.collectAsStateWithLifecycle()
+    val bonusCollected by missionsViewModel.bonusJustCollected.collectAsStateWithLifecycle()
+
+    if (bonusCollected) {
+        AlertDialog(
+            onDismissRequest = { missionsViewModel.clearBonusFlag() },
+            title = { Text("Sve misije završene!", color = White, fontWeight = FontWeight.ExtraBold) },
+            text = { Text("Odlično! Dobili ste 2 tokena i 3 bonus zvezde!", color = LightGray) },
+            confirmButton = {
+                TextButton(onClick = { missionsViewModel.clearBonusFlag() }) {
+                    Text("Super!", color = Gold, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = NavyCard
+        )
+    }
 
     if (homeState.isGuest) {
         GuestHomeScreen(
@@ -71,7 +92,13 @@ fun HomeScreen(
                 onNotificationsClick = onNotificationsClick
             )
         },
-        bottomBar = { MozaikBottomNav(selectedIndex = 0, onProfileClick = onProfileClick) }
+        bottomBar = {
+            MozaikBottomNav(
+                selectedIndex = 0,
+                onProfileClick = onProfileClick,
+                onLeaderboardClick = onLeaderboardClick
+            )
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -87,8 +114,11 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                ModeCard(color = Accent2, icon = "⚔", title = "Izazov", sub = "Uloži zvezde", badge = "3 ČEKAJU", modifier = Modifier.weight(1f))
-                ModeCard(color = Accent5, icon = "♛", title = "Turnir", sub = "4 igrača · 3 ●", badge = "START 18:00", modifier = Modifier.weight(1f))
+                ModeCard(color = Accent2, icon = "⚔", title = "Izazov", sub = "Uloži zvezde", badge = null, modifier = Modifier.weight(1f))
+                ModeCard(
+                    color = Accent5, icon = "♛", title = "Turnir", sub = "4 igrača · 3 ●",
+                    badge = "UĐI", modifier = Modifier.weight(1f), onClick = onTurnirClick
+                )
             }
 
             // Zapocni partiju button
@@ -129,21 +159,45 @@ fun HomeScreen(
                 }
             }
 
-            SectionHeader(title = "Dnevne misije", sub = "Resetuje se za 04:12", modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 10.dp))
+            SectionHeader(title = "Dnevne misije", modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 10.dp))
 
-            val missions = listOf(
-                Triple("Pobedi partiju", "0/1", GameSkocko),
-                Triple("Pošalji poruku u čet", "1/1", GameSpojnice),
-                Triple("Prijateljska partija", "0/1", GameKorak),
-                Triple("Pobedi u turniru", "0/1", GameAsocijacije),
+            val missionList = listOf(
+                Triple("Pobedi partiju", missions.winGame, GameSkocko),
+                Triple("Pošalji poruku u čet", missions.sendMessage, GameSpojnice),
+                Triple("Prijateljska partija", missions.playFriendly, GameKorak),
+                Triple("Pobedi u turniru", missions.winTournament, GameAsocijacije),
             )
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(missions.size) { i ->
-                    val (title, progress, color) = missions[i]
-                    MissionCard(title = title, progress = progress, color = color, done = progress == "1/1")
+                items(missionList.size) { i ->
+                    val (title, done, color) = missionList[i]
+                    MissionCard(
+                        title = title,
+                        progress = if (done) "1/1" else "0/1",
+                        color = color,
+                        done = done
+                    )
+                }
+            }
+            if (missions.allCompleted() && !missions.bonusCollected) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Gold.copy(alpha = 0.15f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("★", color = Gold, fontSize = 20.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Sve misije završene! Bonus: +2 tokena +3★",
+                            color = Gold, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
                 }
             }
 
@@ -308,12 +362,14 @@ private fun ModeCard(
     title: String,
     sub: String,
     badge: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
             .background(NavyLight)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         if (badge != null) {
             Box(

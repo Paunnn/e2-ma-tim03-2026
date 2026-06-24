@@ -4,8 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.firestore.ListenerRegistration
+import com.tim03.slagalica.data.repository.DailyMissionsRepository
+import com.tim03.slagalica.data.repository.NotificationRepository
 import com.tim03.slagalica.data.repository.PartijaSessionRepository
+import com.tim03.slagalica.data.repository.TurnirRepository
 import com.tim03.slagalica.data.repository.UserRepository
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,9 +34,16 @@ data class PartijaUiState(
 class PartijaViewModel(
     val sessionId: String = "",
     val isPlayer1: Boolean = true,
+    val isFriendly: Boolean = false,
     private val userRepo: UserRepository = UserRepository(),
-    private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository()
+    private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository(),
+    private val missionRepo: DailyMissionsRepository = DailyMissionsRepository(),
+    private val notifRepo: NotificationRepository = NotificationRepository(),
+    private val turnirRepo: TurnirRepository = TurnirRepository()
 ) : ViewModel() {
+
+    private var sessionTurnirId: String = ""
+    private var sessionIsFinal: Boolean = false
 
     companion object {
         val GAME_ORDER = listOf(
@@ -58,6 +69,12 @@ class PartijaViewModel(
 
     private fun listenToSession() {
         sessionListener = sessionRepo.listenToSession(sessionId) { session ->
+            // Capture tournament metadata on first update
+            if (sessionTurnirId.isEmpty() && session.turnirId.isNotEmpty()) {
+                sessionTurnirId = session.turnirId
+                sessionIsFinal = session.isFinal
+            }
+
             val s = _uiState.value
             if (s.isComplete) return@listenToSession
 
@@ -146,6 +163,39 @@ class PartijaViewModel(
             runCatching {
                 userRepo.savePartijaResult(won, drawn)
                 if (isMultiplayer && !s.forfeitLoss) sessionRepo.completeSession(sessionId)
+
+                val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@runCatching
+
+                if (!isFriendly) {
+                    val awardResult = userRepo.awardStarsFromPartija(won, s.myTotal, isFriendly = false)
+                    if (awardResult.tokensEarned > 0) {
+                        notifRepo.addNotification(uid, "REWARD", "Bonus token!",
+                            "Sakupili ste 50 zvezda i dobili ${awardResult.tokensEarned} token!")
+                    }
+                    if (won) missionRepo.completeWinGame()
+                } else {
+                    missionRepo.completePlayFriendly()
+                }
+
+                // Advance tournament bracket if this was a tournament session
+                if (sessionTurnirId.isNotEmpty()) {
+                    val winnerUid = if (won) uid else {
+                        // Determine opponent UID from the session
+                        val doc = sessionRepo.getSession(sessionId)
+                        if (isPlayer1) doc?.player2Uid ?: "" else doc?.player1Uid ?: ""
+                    }
+                    if (sessionIsFinal) {
+                        val loserUid = if (won) {
+                            val doc = sessionRepo.getSession(sessionId)
+                            if (isPlayer1) doc?.player2Uid ?: "" else doc?.player1Uid ?: ""
+                        } else uid
+                        runCatching { turnirRepo.reportFinalResult(sessionTurnirId, winnerUid, loserUid) }
+                    } else {
+                        val turnirDoc = turnirRepo.getTurnirSession(sessionTurnirId)
+                        val semiField = if (turnirDoc?.semi1SessionId == sessionId) "semi1Winner" else "semi2Winner"
+                        runCatching { turnirRepo.reportSemiFinalResult(sessionTurnirId, semiField, winnerUid) }
+                    }
+                }
             }
         }
     }
@@ -158,9 +208,10 @@ class PartijaViewModel(
 
 class PartijaViewModelFactory(
     private val sessionId: String,
-    private val isPlayer1: Boolean
+    private val isPlayer1: Boolean,
+    private val isFriendly: Boolean = false
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        PartijaViewModel(sessionId = sessionId, isPlayer1 = isPlayer1) as T
+        PartijaViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, isFriendly = isFriendly) as T
 }

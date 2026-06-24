@@ -20,6 +20,7 @@ import com.tim03.slagalica.ui.theme.*
 fun MozaikBottomNav(
     selectedIndex: Int = 0,
     onHomeClick: () -> Unit = {},
+    onLeaderboardClick: () -> Unit = {},
     onProfileClick: () -> Unit = {}
 ) {
     val items = listOf(
@@ -37,6 +38,7 @@ fun MozaikBottomNav(
                 onClick = {
                     when (i) {
                         0 -> onHomeClick()
+                        1 -> onLeaderboardClick()
                         4 -> onProfileClick()
                     }
                 },

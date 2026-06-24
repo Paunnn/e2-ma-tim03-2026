@@ -5,6 +5,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.messaging.FirebaseMessaging
 import com.tim03.slagalica.data.model.User
 import kotlinx.coroutines.tasks.await
 
@@ -60,6 +61,13 @@ class AuthRepository {
             auth.signOut()
             error("EMAIL_NOT_VERIFIED")
         }
+
+        // Save FCM token after successful login
+        runCatching {
+            val token = FirebaseMessaging.getInstance().token.await()
+            firestore.collection("users").document(user.uid).update("fcmToken", token).await()
+        }
+
         user
     }
 

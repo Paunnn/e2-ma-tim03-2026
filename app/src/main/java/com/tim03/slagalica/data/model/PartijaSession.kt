@@ -10,5 +10,8 @@ data class PartijaSession(
     val status: String = "active",
     val forfeitedBy: String = "",
     val player1GameScores: Map<String, Long> = emptyMap(),
-    val player2GameScores: Map<String, Long> = emptyMap()
+    val player2GameScores: Map<String, Long> = emptyMap(),
+    val isTournament: Boolean = false,
+    val isFinal: Boolean = false,
+    val turnirId: String = ""
 )

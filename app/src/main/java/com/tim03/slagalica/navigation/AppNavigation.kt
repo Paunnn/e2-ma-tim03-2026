@@ -13,6 +13,7 @@ import com.tim03.slagalica.ui.auth.ChangePasswordScreen
 import com.tim03.slagalica.ui.auth.LoginScreen
 import com.tim03.slagalica.ui.auth.RegisterScreen
 import com.tim03.slagalica.ui.games.AsocijacijeScreen
+import com.tim03.slagalica.ui.leaderboard.LeaderboardScreen
 import com.tim03.slagalica.ui.partija.MatchmakingScreen
 import com.tim03.slagalica.ui.partija.PartijaScreen
 import com.tim03.slagalica.ui.games.KorakPoKorakScreen
@@ -23,7 +24,9 @@ import com.tim03.slagalica.ui.games.SpojniceScreen
 import com.tim03.slagalica.ui.home.HomeScreen
 import com.tim03.slagalica.ui.notifications.NotificationsScreen
 import com.tim03.slagalica.ui.profile.ProfileScreen
+import com.tim03.slagalica.ui.turnir.TurnirScreen
 import com.tim03.slagalica.viewmodel.NotificationsViewModel
+import com.tim03.slagalica.viewmodel.TurnirViewModel
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
@@ -65,6 +68,8 @@ fun AppNavigation(navController: NavHostController) {
                 onPartijaClick = { navController.navigate(Screen.Matchmaking.route) },
                 onProfileClick = { navController.navigate(Screen.Profile.route) },
                 onNotificationsClick = { navController.navigate(Screen.Notifications.route) },
+                onLeaderboardClick = { navController.navigate(Screen.Leaderboard.route) },
+                onTurnirClick = { navController.navigate(Screen.Turnir.route) },
                 onLogout = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
@@ -119,6 +124,21 @@ fun AppNavigation(navController: NavHostController) {
 
         composable(Screen.Notifications.route) {
             NotificationsScreen(onBackClick = { navController.popBackStack() })
+        }
+
+        composable(Screen.Leaderboard.route) {
+            LeaderboardScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Screen.Turnir.route) {
+            val turnirVm: TurnirViewModel = viewModel()
+            TurnirScreen(
+                vm = turnirVm,
+                onNavigateToPartija = { sessionId, isPlayer1, isTournament, isFinal ->
+                    navController.navigate(Screen.Partija.createRoute(sessionId, isPlayer1))
+                },
+                onExit = { navController.popBackStack() }
+            )
         }
 
         composable(Screen.KorakPoKorak.route) {

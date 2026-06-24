@@ -1,10 +1,12 @@
 package com.tim03.slagalica.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.tim03.slagalica.data.model.NotificationModel
 import com.tim03.slagalica.data.repository.NotificationRepository
+import com.tim03.slagalica.util.LocalNotificationHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,8 +19,9 @@ import kotlinx.coroutines.launch
 enum class NotifFilter { ALL, UNREAD, READ, CHAT, RANKING, REWARD, OTHER }
 
 class NotificationsViewModel(
+    application: Application,
     private val repo: NotificationRepository = NotificationRepository()
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
     private val _filter = MutableStateFlow(NotifFilter.ALL)
     val filter: StateFlow<NotifFilter> = _filter.asStateFlow()
@@ -43,10 +46,30 @@ class NotificationsViewModel(
     val unreadCount: StateFlow<Int> = allNotifications.map { it.count { n -> !n.isRead } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    private var previousIds: Set<String> = emptySet()
+
     init {
         FirebaseAuth.getInstance().addAuthStateListener { firebaseAuth ->
             if (firebaseAuth.currentUser != null) {
                 viewModelScope.launch { repo.seedSampleNotificationsIfEmpty() }
+            }
+        }
+
+        viewModelScope.launch {
+            allNotifications.collect { notifications ->
+                val currentIds = notifications.map { it.id }.toSet()
+                val newUnread = notifications.filter { it.id !in previousIds && !it.isRead }
+                if (previousIds.isNotEmpty()) {
+                    newUnread.forEach { notif ->
+                        LocalNotificationHelper.show(
+                            context = getApplication(),
+                            title = notif.title,
+                            body = notif.message,
+                            channel = LocalNotificationHelper.channelForType(notif.channel)
+                        )
+                    }
+                }
+                previousIds = currentIds
             }
         }
     }
@@ -63,18 +86,10 @@ class NotificationsViewModel(
 
     fun addTestNotifications() {
         viewModelScope.launch {
-            val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-            android.util.Log.d("NOTIF_TEST", "UID = $uid")
-            if (uid == null) { android.util.Log.e("NOTIF_TEST", "UID je null!"); return@launch }
-            try {
-                repo.addNotification(uid, "CHAT", "Nova poruka", "Petar: Hej, idemo na partiju?")
-                repo.addNotification(uid, "RANKING", "Nedeljni rezultati", "Zauzeli ste 2. mesto na nedeljnoj rang listi!")
-                repo.addNotification(uid, "REWARD", "Nagrada!", "Dobili ste 3 tokena za plasman na rang listi.")
-                repo.addNotification(uid, "OTHER", "Poziv za partiju", "Marko vas poziva na prijateljsku partiju.")
-                android.util.Log.d("NOTIF_TEST", "Sve notifikacije dodate!")
-            } catch (e: Exception) {
-                android.util.Log.e("NOTIF_TEST", "Greška: ${e.message}", e)
-            }
+            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
+            repo.addNotification(uid, "CHAT", "Nova poruka", "Petar: Hej, idemo na partiju?")
+            repo.addNotification(uid, "RANKING", "Nedeljni rezultati", "Zauzeli ste 2. mesto!")
+            repo.addNotification(uid, "REWARD", "Nagrada!", "Dobili ste 3 tokena za plasman.")
         }
     }
 }

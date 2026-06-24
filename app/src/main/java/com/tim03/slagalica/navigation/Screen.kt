@@ -17,4 +17,6 @@ sealed class Screen(val route: String) {
         fun createRoute(sessionId: String, isPlayer1: Boolean) = "partija/$sessionId/$isPlayer1"
     }
     object Notifications : Screen("notifications")
+    object Leaderboard : Screen("leaderboard")
+    object Turnir : Screen("turnir")
 }

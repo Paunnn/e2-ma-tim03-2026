@@ -25,7 +25,10 @@ class PartijaSessionRepository {
                 status = doc.getString("status") ?: "active",
                 forfeitedBy = doc.getString("forfeitedBy") ?: "",
                 player1GameScores = parseScores(doc.get("player1GameScores")),
-                player2GameScores = parseScores(doc.get("player2GameScores"))
+                player2GameScores = parseScores(doc.get("player2GameScores")),
+                isTournament = doc.getBoolean("isTournament") ?: false,
+                isFinal = doc.getBoolean("isFinal") ?: false,
+                turnirId = doc.getString("turnirId") ?: ""
             )
             onUpdate(session)
         }
@@ -52,6 +55,28 @@ class PartijaSessionRepository {
                 "forfeitedBy" to if (isPlayer1) "player1" else "player2"
             )).await()
         }
+    }
+
+    suspend fun getSession(sessionId: String): PartijaSession? {
+        return try {
+            val doc = sessions.document(sessionId).get().await()
+            if (!doc.exists()) return null
+            PartijaSession(
+                id = doc.id,
+                player1Uid = doc.getString("player1Uid") ?: "",
+                player2Uid = doc.getString("player2Uid") ?: "",
+                player1Name = doc.getString("player1Name") ?: "",
+                player2Name = doc.getString("player2Name") ?: "",
+                playerUids = (doc.get("playerUids") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                status = doc.getString("status") ?: "active",
+                forfeitedBy = doc.getString("forfeitedBy") ?: "",
+                player1GameScores = parseScores(doc.get("player1GameScores")),
+                player2GameScores = parseScores(doc.get("player2GameScores")),
+                isTournament = doc.getBoolean("isTournament") ?: false,
+                isFinal = doc.getBoolean("isFinal") ?: false,
+                turnirId = doc.getString("turnirId") ?: ""
+            )
+        } catch (e: Exception) { null }
     }
 
     private fun parseScores(raw: Any?): Map<String, Long> {

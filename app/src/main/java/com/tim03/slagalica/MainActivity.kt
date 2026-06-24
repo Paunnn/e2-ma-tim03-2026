@@ -1,12 +1,16 @@
 package com.tim03.slagalica
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.tim03.slagalica.data.repository.FirestoreSeedRepository
@@ -16,10 +20,15 @@ import com.tim03.slagalica.ui.theme.SlagalicaTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    private val requestNotifPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         createNotificationChannels()
+        requestNotificationPermissionIfNeeded()
 
         lifecycleScope.launch {
             try { FirestoreSeedRepository().seedDatabase() } catch (_: Exception) {}
@@ -29,6 +38,16 @@ class MainActivity : ComponentActivity() {
             SlagalicaTheme {
                 val navController = rememberNavController()
                 AppNavigation(navController = navController)
+            }
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
     }

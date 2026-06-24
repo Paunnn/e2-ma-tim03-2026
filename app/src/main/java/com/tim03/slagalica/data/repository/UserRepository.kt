@@ -104,5 +104,83 @@ class UserRepository {
         db.collection("users").document(uid).update(field, FieldValue.increment(1L)).await()
     }
 
+    // Returns (newStars, newLeague, tokensEarned, starDelta)
+    suspend fun awardStarsFromPartija(won: Boolean, totalPoints: Int, isFriendly: Boolean): StarAwardResult {
+        if (isFriendly) return StarAwardResult(0, 0, 0, 0)
+        val uid = auth.currentUser?.uid ?: return StarAwardResult(0, 0, 0, 0)
+        val user = getCurrentUser() ?: return StarAwardResult(0, 0, 0, 0)
+
+        val starsFromPoints = totalPoints / 40
+        val rawDelta = if (won) 10 + starsFromPoints else -10 + starsFromPoints
+        val oldStars = user.stars
+        val newStars = (oldStars + rawDelta).coerceAtLeast(0)
+        val actualDelta = newStars - oldStars
+
+        val newLeague = leagueForStars(newStars)
+
+        val oldTokenMilestone = oldStars / 50
+        val newTokenMilestone = newStars / 50
+        val tokensFromStars = (newTokenMilestone - oldTokenMilestone).coerceAtLeast(0)
+
+        val updates = mutableMapOf<String, Any>(
+            "stars" to newStars,
+            "league" to newLeague,
+            "weeklyStars" to FieldValue.increment(actualDelta.toLong()),
+            "monthlyStars" to FieldValue.increment(actualDelta.toLong())
+        )
+        if (tokensFromStars > 0) {
+            updates["tokens"] = FieldValue.increment(tokensFromStars.toLong())
+        }
+        db.collection("users").document(uid).update(updates).await()
+        return StarAwardResult(newStars, newLeague, tokensFromStars, actualDelta)
+    }
+
+    suspend fun addTokens(uid: String, count: Int) {
+        if (count == 0) return
+        db.collection("users").document(uid).update("tokens", FieldValue.increment(count.toLong())).await()
+    }
+
+    suspend fun addStars(uid: String, count: Int) {
+        val doc = db.collection("users").document(uid).get().await()
+        val oldStars = doc.getLong("stars")?.toInt() ?: 0
+        val newStars = (oldStars + count).coerceAtLeast(0)
+        val newLeague = leagueForStars(newStars)
+        db.collection("users").document(uid).update(
+            mapOf(
+                "stars" to newStars,
+                "league" to newLeague,
+                "weeklyStars" to FieldValue.increment(count.toLong()),
+                "monthlyStars" to FieldValue.increment(count.toLong())
+            )
+        ).await()
+    }
+
+    suspend fun resetCycleStars(isWeekly: Boolean) {
+        val uid = auth.currentUser?.uid ?: return
+        val field = if (isWeekly) "weeklyStars" else "monthlyStars"
+        db.collection("users").document(uid).update(field, 0).await()
+    }
+
+    suspend fun saveFcmToken(token: String) {
+        val uid = auth.currentUser?.uid ?: return
+        db.collection("users").document(uid).update("fcmToken", token).await()
+    }
+
+    fun leagueForStars(stars: Int): Int = when {
+        stars >= 1600 -> 5
+        stars >= 800 -> 4
+        stars >= 400 -> 3
+        stars >= 200 -> 2
+        stars >= 100 -> 1
+        else -> 0
+    }
+
     fun logout() = auth.signOut()
 }
+
+data class StarAwardResult(
+    val newStars: Int,
+    val newLeague: Int,
+    val tokensEarned: Int,
+    val starDelta: Int
+)
