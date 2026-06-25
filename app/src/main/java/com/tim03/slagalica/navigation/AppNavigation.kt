@@ -12,8 +12,11 @@ import androidx.navigation.navArgument
 import com.tim03.slagalica.ui.auth.ChangePasswordScreen
 import com.tim03.slagalica.ui.auth.LoginScreen
 import com.tim03.slagalica.ui.auth.RegisterScreen
+import com.tim03.slagalica.ui.chat.ChatScreen
 import com.tim03.slagalica.ui.games.AsocijacijeScreen
+import com.tim03.slagalica.ui.izazov.IzazovScreen
 import com.tim03.slagalica.ui.leaderboard.LeaderboardScreen
+import com.tim03.slagalica.ui.partija.FriendlyMatchmakingScreen
 import com.tim03.slagalica.ui.partija.MatchmakingScreen
 import com.tim03.slagalica.ui.partija.PartijaScreen
 import com.tim03.slagalica.ui.games.KorakPoKorakScreen
@@ -25,6 +28,7 @@ import com.tim03.slagalica.ui.home.HomeScreen
 import com.tim03.slagalica.ui.notifications.NotificationsScreen
 import com.tim03.slagalica.ui.profile.ProfileScreen
 import com.tim03.slagalica.ui.turnir.TurnirScreen
+import com.tim03.slagalica.viewmodel.HomeViewModel
 import com.tim03.slagalica.viewmodel.NotificationsViewModel
 import com.tim03.slagalica.viewmodel.TurnirViewModel
 
@@ -32,6 +36,7 @@ import com.tim03.slagalica.viewmodel.TurnirViewModel
 fun AppNavigation(navController: NavHostController) {
     val notifViewModel: NotificationsViewModel = viewModel()
     val unreadCount by notifViewModel.unreadCount.collectAsState()
+    val homeViewModel: HomeViewModel = viewModel()
 
     NavHost(navController = navController, startDestination = Screen.Login.route) {
 
@@ -66,16 +71,23 @@ fun AppNavigation(navController: NavHostController) {
                 onAsocijacijeClick = { navController.navigate(Screen.Asocijacije.route) },
                 onSkockoClick = { navController.navigate(Screen.Skocko.route) },
                 onPartijaClick = { navController.navigate(Screen.Matchmaking.route) },
+                onFriendlyClick = { navController.navigate(Screen.FriendlyMatchmaking.route) },
                 onProfileClick = { navController.navigate(Screen.Profile.route) },
                 onNotificationsClick = { navController.navigate(Screen.Notifications.route) },
                 onLeaderboardClick = { navController.navigate(Screen.Leaderboard.route) },
                 onTurnirClick = { navController.navigate(Screen.Turnir.route) },
+                onChatClick = { navController.navigate(Screen.Chat.route) },
+                onIzazovClick = { navController.navigate(Screen.Izazov.route) },
                 onLogout = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
                     }
                 },
-                unreadNotifCount = unreadCount
+                unreadNotifCount = unreadCount,
+                homeViewModel = homeViewModel,
+                onNavigateToPartija = { sessionId, isPlayer1 ->
+                    navController.navigate(Screen.Partija.createRoute(sessionId, isPlayer1))
+                }
             )
         }
 
@@ -138,6 +150,25 @@ fun AppNavigation(navController: NavHostController) {
                     navController.navigate(Screen.Partija.createRoute(sessionId, isPlayer1))
                 },
                 onExit = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.Chat.route) {
+            ChatScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Screen.Izazov.route) {
+            IzazovScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Screen.FriendlyMatchmaking.route) {
+            FriendlyMatchmakingScreen(
+                onMatchReady = { sessionId, isPlayer1 ->
+                    navController.navigate(Screen.Partija.createRoute(sessionId, isPlayer1)) {
+                        popUpTo(Screen.FriendlyMatchmaking.route) { inclusive = true }
+                    }
+                },
+                onBack = { navController.popBackStack() }
             )
         }
 

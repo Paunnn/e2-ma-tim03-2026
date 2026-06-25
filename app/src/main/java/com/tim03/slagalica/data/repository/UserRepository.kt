@@ -175,6 +175,21 @@ class UserRepository {
         else -> 0
     }
 
+    suspend fun checkAndRefreshDailyTokens(): Int {
+        val uid = auth.currentUser?.uid ?: return 0
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+        val user = getCurrentUser() ?: return 0
+        if (user.lastDailyTokenDate == today) return 0
+        val bonus = 5 + user.league
+        db.collection("users").document(uid).update(
+            mapOf(
+                "tokens" to com.google.firebase.firestore.FieldValue.increment(bonus.toLong()),
+                "lastDailyTokenDate" to today
+            )
+        ).await()
+        return bonus
+    }
+
     fun logout() = auth.signOut()
 }
 

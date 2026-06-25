@@ -45,6 +45,17 @@ class MatchmakingViewModel(
                 myUid = user.uid
                 myName = user.username
 
+                if (user.tokens < 1) {
+                    _uiState.value = _uiState.value.copy(
+                        status = MatchmakingStatus.ERROR,
+                        errorMessage = "Nemate dovoljno tokena. Partija košta 1 token."
+                    )
+                    return@runCatching
+                }
+
+                // Deduct 1 token for entering matchmaking
+                userRepo.addTokens(myUid, -1)
+
                 // Clean up any leftover result doc from a previous session.
                 matchmakingRepo.deleteMyResult(myUid)
 

@@ -43,11 +43,15 @@ fun HomeScreen(
     onAsocijacijeClick: () -> Unit = {},
     onSkockoClick: () -> Unit = {},
     onPartijaClick: () -> Unit = {},
+    onFriendlyClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
     onTurnirClick: () -> Unit = {},
+    onChatClick: () -> Unit = {},
+    onIzazovClick: () -> Unit = {},
     onLogout: () -> Unit = {},
+    onNavigateToPartija: (sessionId: String, isPlayer1: Boolean) -> Unit = { _, _ -> },
     unreadNotifCount: Int = 0,
     homeViewModel: HomeViewModel = viewModel(),
     missionsViewModel: DailyMissionsViewModel = viewModel()
@@ -55,6 +59,31 @@ fun HomeScreen(
     val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
     val missions by missionsViewModel.missions.collectAsStateWithLifecycle()
     val bonusCollected by missionsViewModel.bonusJustCollected.collectAsStateWithLifecycle()
+    val incomingInvite = homeState.incomingInvite
+
+    // Incoming friend invite dialog
+    if (incomingInvite != null) {
+        AlertDialog(
+            onDismissRequest = { homeViewModel.rejectInvite() },
+            title = { Text("Poziv za prijateljsku partiju", color = White, fontWeight = FontWeight.ExtraBold) },
+            text = { Text("${incomingInvite.senderName} vas poziva na prijateljsku partiju.\nPoziv ističe za 10 sekundi.", color = LightGray) },
+            confirmButton = {
+                TextButton(onClick = {
+                    homeViewModel.acceptInvite { sessionId, isPlayer1 ->
+                        onNavigateToPartija(sessionId, isPlayer1)
+                    }
+                }) {
+                    Text("Prihvati", color = SuccessGreen, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { homeViewModel.rejectInvite() }) {
+                    Text("Odbij", color = ErrorRed)
+                }
+            },
+            containerColor = NavyCard
+        )
+    }
 
     if (bonusCollected) {
         AlertDialog(
@@ -106,7 +135,11 @@ fun HomeScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
-            HeroCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            HeroCard(
+                onFriendlyClick = onFriendlyClick,
+                onChatClick = onChatClick,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
 
             Row(
                 modifier = Modifier
@@ -114,7 +147,7 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                ModeCard(color = Accent2, icon = "⚔", title = "Izazov", sub = "Uloži zvezde", badge = null, modifier = Modifier.weight(1f))
+                ModeCard(color = Accent2, icon = "⚔", title = "Izazov", sub = "Uloži zvezde", badge = null, modifier = Modifier.weight(1f), onClick = onIzazovClick)
                 ModeCard(
                     color = Accent5, icon = "♛", title = "Turnir", sub = "4 igrača · 3 ●",
                     badge = "UĐI", modifier = Modifier.weight(1f), onClick = onTurnirClick
@@ -295,7 +328,11 @@ private fun ResourceBar(
 // ── Hero card ─────────────────────────────────────────────────────
 
 @Composable
-private fun HeroCard(modifier: Modifier = Modifier) {
+private fun HeroCard(
+    onFriendlyClick: () -> Unit = {},
+    onChatClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     val tileColors = listOf(GameKoZnaZna, GameSpojnice, GameAsocijacije, GameSkocko, GameKorak, GameMojBroj)
     Box(
         modifier = modifier
@@ -331,22 +368,22 @@ private fun HeroCard(modifier: Modifier = Modifier) {
             )
             Row(modifier = Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
-                    onClick = {},
-                    modifier = Modifier.weight(1f).height(40.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright),
-                    contentPadding = PaddingValues(horizontal = 12.dp)
-                ) {
-                    Text("Igraj nasumično", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = White, maxLines = 1)
-                }
-                Button(
-                    onClick = {},
+                    onClick = onFriendlyClick,
                     modifier = Modifier.height(40.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Gold),
                     contentPadding = PaddingValues(horizontal = 14.dp)
                 ) {
                     Text("Drugar", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF3A2A05))
+                }
+                Button(
+                    onClick = onChatClick,
+                    modifier = Modifier.height(40.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent4),
+                    contentPadding = PaddingValues(horizontal = 14.dp)
+                ) {
+                    Text("Čet", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Navy, maxLines = 1)
                 }
             }
         }

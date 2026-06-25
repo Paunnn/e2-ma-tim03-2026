@@ -13,6 +13,7 @@ data class User(
     val weeklyStars: Int = 0,
     val monthlyStars: Int = 0,
     val fcmToken: String = "",
+    val lastDailyTokenDate: String = "",
     val koZnaZnaCorrect: Int = 0,
     val koZnaZnaIncorrect: Int = 0,
     val koZnaZnaRounds: Int = 0,

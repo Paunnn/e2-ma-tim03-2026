@@ -28,6 +28,7 @@ class PartijaSessionRepository {
                 player2GameScores = parseScores(doc.get("player2GameScores")),
                 isTournament = doc.getBoolean("isTournament") ?: false,
                 isFinal = doc.getBoolean("isFinal") ?: false,
+                isFriendly = doc.getBoolean("isFriendly") ?: false,
                 turnirId = doc.getString("turnirId") ?: ""
             )
             onUpdate(session)
@@ -74,6 +75,7 @@ class PartijaSessionRepository {
                 player2GameScores = parseScores(doc.get("player2GameScores")),
                 isTournament = doc.getBoolean("isTournament") ?: false,
                 isFinal = doc.getBoolean("isFinal") ?: false,
+                isFriendly = doc.getBoolean("isFriendly") ?: false,
                 turnirId = doc.getString("turnirId") ?: ""
             )
         } catch (e: Exception) { null }

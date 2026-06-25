@@ -63,17 +63,17 @@ fun MatchmakingScreen(
                 MatchmakingStatus.CANCELLED -> {}
             }
 
-            if (state.status == MatchmakingStatus.SEARCHING) {
+            if (state.status == MatchmakingStatus.SEARCHING || state.status == MatchmakingStatus.ERROR) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
-                    onClick = { viewModel.cancel() },
+                    onClick = { viewModel.cancel(); onCancel() },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = LightGray),
                     border = androidx.compose.foundation.BorderStroke(1.dp, MediumGray)
                 ) {
                     Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Otkaži")
+                    Text(if (state.status == MatchmakingStatus.ERROR) "Nazad" else "Otkaži")
                 }
             }
         }

@@ -19,4 +19,7 @@ sealed class Screen(val route: String) {
     object Notifications : Screen("notifications")
     object Leaderboard : Screen("leaderboard")
     object Turnir : Screen("turnir")
+    object Chat : Screen("chat")
+    object Izazov : Screen("izazov")
+    object FriendlyMatchmaking : Screen("friendly_matchmaking")
 }

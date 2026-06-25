@@ -13,5 +13,6 @@ data class PartijaSession(
     val player2GameScores: Map<String, Long> = emptyMap(),
     val isTournament: Boolean = false,
     val isFinal: Boolean = false,
+    val isFriendly: Boolean = false,
     val turnirId: String = ""
 )

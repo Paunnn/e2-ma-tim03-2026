@@ -34,7 +34,7 @@ data class PartijaUiState(
 class PartijaViewModel(
     val sessionId: String = "",
     val isPlayer1: Boolean = true,
-    val isFriendly: Boolean = false,
+    var isFriendly: Boolean = false,
     private val userRepo: UserRepository = UserRepository(),
     private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository(),
     private val missionRepo: DailyMissionsRepository = DailyMissionsRepository(),
@@ -44,6 +44,7 @@ class PartijaViewModel(
 
     private var sessionTurnirId: String = ""
     private var sessionIsFinal: Boolean = false
+    private var sessionIsFriendlyLoaded: Boolean = false
 
     companion object {
         val GAME_ORDER = listOf(
@@ -69,10 +70,14 @@ class PartijaViewModel(
 
     private fun listenToSession() {
         sessionListener = sessionRepo.listenToSession(sessionId) { session ->
-            // Capture tournament metadata on first update
+            // Capture session metadata on first update
             if (sessionTurnirId.isEmpty() && session.turnirId.isNotEmpty()) {
                 sessionTurnirId = session.turnirId
                 sessionIsFinal = session.isFinal
+            }
+            if (!sessionIsFriendlyLoaded && session.isFriendly) {
+                sessionIsFriendlyLoaded = true
+                isFriendly = true
             }
 
             val s = _uiState.value
