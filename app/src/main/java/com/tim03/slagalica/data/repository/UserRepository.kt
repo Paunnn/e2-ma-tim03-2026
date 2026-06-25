@@ -116,6 +116,7 @@ class UserRepository {
         val newStars = (oldStars + rawDelta).coerceAtLeast(0)
         val actualDelta = newStars - oldStars
 
+        val oldLeague = user.league
         val newLeague = leagueForStars(newStars)
 
         val oldTokenMilestone = oldStars / 50
@@ -132,7 +133,67 @@ class UserRepository {
             updates["tokens"] = FieldValue.increment(tokensFromStars.toLong())
         }
         db.collection("users").document(uid).update(updates).await()
-        return StarAwardResult(newStars, newLeague, tokensFromStars, actualDelta)
+
+        // Notify on league change
+        if (newLeague != oldLeague) {
+            val leagueName = leagueNameFor(newLeague)
+            val msg = if (newLeague > oldLeague)
+                "Napredovali ste u $leagueName ligu! Čestitamo! Dnevni bonus: ${5 + newLeague} tokena."
+            else
+                "Pali ste u $leagueName ligu."
+            db.collection("notifications").add(mapOf(
+                "userId" to uid,
+                "channel" to "OTHER",
+                "title" to "Promena lige!",
+                "message" to msg,
+                "timestamp" to System.currentTimeMillis(),
+                "isRead" to false
+            )).await()
+        }
+
+        return StarAwardResult(newStars, newLeague, tokensFromStars, actualDelta, oldLeague)
+    }
+
+    suspend fun applyMonthlyPenaltyIfNeeded(): Boolean {
+        val uid = auth.currentUser?.uid ?: return false
+        val monthYear = java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val user = getCurrentUser() ?: return false
+        if (user.lastMonthlyCheck == monthYear) return false
+
+        var penaltyApplied = false
+        val updates = mutableMapOf<String, Any>(
+            "lastMonthlyCheck" to monthYear,
+            "monthlyStars" to 0
+        )
+
+        // If user didn't earn any stars this month, apply 30% penalty
+        if (user.monthlyStars == 0 && user.stars > 0) {
+            val penalty = (user.stars * 0.3).toInt().coerceAtLeast(1)
+            val newStars = (user.stars - penalty).coerceAtLeast(0)
+            val newLeague = leagueForStars(newStars)
+            updates["stars"] = newStars
+            updates["league"] = newLeague
+            penaltyApplied = true
+
+            db.collection("notifications").add(mapOf(
+                "userId" to uid,
+                "channel" to "RANKING",
+                "title" to "Mesečni ciklus završen",
+                "message" to "Niste se plasirali na mesečnoj rang listi. Izgubili ste $penalty zvezda (30%).",
+                "timestamp" to System.currentTimeMillis(),
+                "isRead" to false
+            )).await()
+        }
+
+        db.collection("users").document(uid).update(updates).await()
+        return penaltyApplied
+    }
+
+    private fun leagueNameFor(league: Int) = when (league) {
+        0 -> "Početnik"; 1 -> "Bronzanu"; 2 -> "Srebrnu"
+        3 -> "Zlatnu"; 4 -> "Platinastnu"; 5 -> "Dijamantsku"
+        else -> "Ligu $league"
     }
 
     suspend fun addTokens(uid: String, count: Int) {
@@ -197,5 +258,6 @@ data class StarAwardResult(
     val newStars: Int,
     val newLeague: Int,
     val tokensEarned: Int,
-    val starDelta: Int
+    val starDelta: Int,
+    val oldLeague: Int = newLeague
 )

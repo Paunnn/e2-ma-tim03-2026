@@ -50,6 +50,8 @@ fun HomeScreen(
     onTurnirClick: () -> Unit = {},
     onChatClick: () -> Unit = {},
     onIzazovClick: () -> Unit = {},
+    onMapClick: () -> Unit = {},
+    onFriendsClick: () -> Unit = {},
     onLogout: () -> Unit = {},
     onNavigateToPartija: (sessionId: String, isPlayer1: Boolean) -> Unit = { _, _ -> },
     unreadNotifCount: Int = 0,
@@ -125,7 +127,9 @@ fun HomeScreen(
             MozaikBottomNav(
                 selectedIndex = 0,
                 onProfileClick = onProfileClick,
-                onLeaderboardClick = onLeaderboardClick
+                onLeaderboardClick = onLeaderboardClick,
+                onMapClick = onMapClick,
+                onFriendsClick = onFriendsClick
             )
         }
     ) { padding ->

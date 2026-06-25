@@ -22,4 +22,6 @@ sealed class Screen(val route: String) {
     object Chat : Screen("chat")
     object Izazov : Screen("izazov")
     object FriendlyMatchmaking : Screen("friendly_matchmaking")
+    object Region : Screen("region")
+    object Friends : Screen("friends")
 }

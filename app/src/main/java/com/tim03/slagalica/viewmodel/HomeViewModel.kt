@@ -72,6 +72,8 @@ class HomeViewModel(
                     )
                     _uiState.value = _uiState.value.copy(tokens = user.tokens + earned)
                 }
+                // Monthly penalty check
+                userRepo.applyMonthlyPenaltyIfNeeded()
                 // Start listening for friend invites
                 listenForInvites(user.uid)
             }

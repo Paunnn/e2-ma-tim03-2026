@@ -21,6 +21,8 @@ fun MozaikBottomNav(
     selectedIndex: Int = 0,
     onHomeClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
+    onMapClick: () -> Unit = {},
+    onFriendsClick: () -> Unit = {},
     onProfileClick: () -> Unit = {}
 ) {
     val items = listOf(
@@ -39,6 +41,8 @@ fun MozaikBottomNav(
                     when (i) {
                         0 -> onHomeClick()
                         1 -> onLeaderboardClick()
+                        2 -> onMapClick()
+                        3 -> onFriendsClick()
                         4 -> onProfileClick()
                     }
                 },

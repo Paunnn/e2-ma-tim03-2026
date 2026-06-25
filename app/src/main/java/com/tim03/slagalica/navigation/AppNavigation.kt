@@ -13,6 +13,7 @@ import com.tim03.slagalica.ui.auth.ChangePasswordScreen
 import com.tim03.slagalica.ui.auth.LoginScreen
 import com.tim03.slagalica.ui.auth.RegisterScreen
 import com.tim03.slagalica.ui.chat.ChatScreen
+import com.tim03.slagalica.ui.friends.FriendsScreen
 import com.tim03.slagalica.ui.games.AsocijacijeScreen
 import com.tim03.slagalica.ui.izazov.IzazovScreen
 import com.tim03.slagalica.ui.leaderboard.LeaderboardScreen
@@ -27,6 +28,7 @@ import com.tim03.slagalica.ui.games.SpojniceScreen
 import com.tim03.slagalica.ui.home.HomeScreen
 import com.tim03.slagalica.ui.notifications.NotificationsScreen
 import com.tim03.slagalica.ui.profile.ProfileScreen
+import com.tim03.slagalica.ui.region.RegionScreen
 import com.tim03.slagalica.ui.turnir.TurnirScreen
 import com.tim03.slagalica.viewmodel.HomeViewModel
 import com.tim03.slagalica.viewmodel.NotificationsViewModel
@@ -78,6 +80,8 @@ fun AppNavigation(navController: NavHostController) {
                 onTurnirClick = { navController.navigate(Screen.Turnir.route) },
                 onChatClick = { navController.navigate(Screen.Chat.route) },
                 onIzazovClick = { navController.navigate(Screen.Izazov.route) },
+                onMapClick = { navController.navigate(Screen.Region.route) },
+                onFriendsClick = { navController.navigate(Screen.Friends.route) },
                 onLogout = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
@@ -194,6 +198,27 @@ fun AppNavigation(navController: NavHostController) {
 
         composable(Screen.Skocko.route) {
             SkockoScreen(onExitClick = { navController.popBackStack() })
+        }
+
+        composable(Screen.Region.route) {
+            RegionScreen(
+                onHomeClick = { navController.navigate(Screen.Home.route) { launchSingleTop = true } },
+                onLeaderboardClick = { navController.navigate(Screen.Leaderboard.route) },
+                onFriendsClick = { navController.navigate(Screen.Friends.route) { launchSingleTop = true } },
+                onProfileClick = { navController.navigate(Screen.Profile.route) }
+            )
+        }
+
+        composable(Screen.Friends.route) {
+            FriendsScreen(
+                onHomeClick = { navController.navigate(Screen.Home.route) { launchSingleTop = true } },
+                onLeaderboardClick = { navController.navigate(Screen.Leaderboard.route) },
+                onMapClick = { navController.navigate(Screen.Region.route) { launchSingleTop = true } },
+                onProfileClick = { navController.navigate(Screen.Profile.route) },
+                onStartFriendlyMatch = { _, _ ->
+                    navController.navigate(Screen.FriendlyMatchmaking.route)
+                }
+            )
         }
     }
 }

@@ -60,5 +60,6 @@ dependencies {
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.messaging)
     implementation(libs.zxing.core)
+    implementation(libs.zxing.android.embedded) { isTransitive = false }
     debugImplementation(libs.androidx.ui.tooling)
 }
