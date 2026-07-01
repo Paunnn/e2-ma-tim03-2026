@@ -1,6 +1,8 @@
 package com.tim03.slagalica.ui.leaderboard
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -14,9 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.data.model.LeaderboardEntry
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.LeaderboardViewModel
+import com.tim03.slagalica.viewmodel.PendingReward
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +38,10 @@ fun LeaderboardScreen(
     vm: LeaderboardViewModel = viewModel()
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
+
+    state.pendingReward?.let { reward ->
+        RewardDialog(reward = reward, onDismiss = vm::dismissReward)
+    }
 
     Scaffold(
         containerColor = Navy,
@@ -70,17 +79,16 @@ fun LeaderboardScreen(
                             .weight(1f)
                             .clip(RoundedCornerShape(12.dp))
                             .background(if (selected) PrimaryBlueBright else Color.Transparent)
-                            .padding(vertical = 10.dp),
+                            .clickable { vm.selectTab(i) }
+                            .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        TextButton(onClick = { vm.selectTab(i) }) {
-                            Text(
-                                label,
-                                color = if (selected) White else LightGray,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 14.sp
-                            )
-                        }
+                        Text(
+                            label,
+                            color = if (selected) White else LightGray,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 14.sp
+                        )
                     }
                 }
             }
@@ -289,4 +297,91 @@ private fun leagueColor(league: Int) = when (league) {
     0 -> Color(0xFF9E9E9E); 1 -> Color(0xFFCD7F32)
     2 -> Color(0xFFC0C0C0); 3 -> Gold
     4 -> Color(0xFFE5E4E2); 5 -> Color(0xFF4FC3F7); else -> MediumGray
+}
+
+@Composable
+private fun RewardDialog(reward: PendingReward, onDismiss: () -> Unit) {
+    val infiniteTransition = rememberInfiniteTransition(label = "reward")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 0.9f, targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "scale"
+    )
+    val glow by infiniteTransition.animateFloat(
+        initialValue = 0.5f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "glow"
+    )
+
+    val rankLabel = when (reward.rank) {
+        1 -> "1. mesto 🥇"; 2 -> "2. mesto 🥈"; 3 -> "3. mesto 🥉"
+        else -> "${reward.rank}. mesto"
+    }
+    val cycleLabel = if (reward.isMonthly) "Mesečna rang lista" else "Nedeljne rang lista"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = NavyCard,
+        title = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "🏆",
+                    fontSize = (64 * scale).sp,
+                    modifier = Modifier.scale(scale)
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Nagrada!",
+                    color = Gold,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 22.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(cycleLabel, color = LightGray, fontSize = 13.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(8.dp))
+                Text(rankLabel, color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(16.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Gold.copy(alpha = 0.15f * glow + 0.1f))
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                        Text("🪙", fontSize = 28.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "+${reward.tokens} tokena",
+                            color = Gold,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 24.sp
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Tokeni su dodati na vaš nalog.", color = MediumGray, fontSize = 12.sp, textAlign = TextAlign.Center)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Gold),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Odlično!", color = Navy, fontWeight = FontWeight.ExtraBold)
+            }
+        }
+    )
 }

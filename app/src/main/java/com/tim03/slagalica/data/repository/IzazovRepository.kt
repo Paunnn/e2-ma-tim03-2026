@@ -9,25 +9,25 @@ import kotlinx.coroutines.tasks.await
 
 class IzazovRepository {
     private val db = FirebaseFirestore.getInstance()
+    private val userRepo = UserRepository()
     private val col = db.collection("izazov_sessions")
     private val users = db.collection("users")
 
     suspend fun createIzazov(
         posterId: String,
         posterName: String,
+        region: String,
         bidStars: Int,
         bidTokens: Int
     ): String {
-        // Deduct bid from poster immediately
-        val updates = mutableMapOf<String, Any>()
-        if (bidStars > 0) updates["stars"] = FieldValue.increment(-bidStars.toLong())
-        if (bidTokens > 0) updates["tokens"] = FieldValue.increment(-bidTokens.toLong())
-        if (updates.isNotEmpty()) users.document(posterId).update(updates).await()
+        if (bidTokens > 0) users.document(posterId).update("tokens", FieldValue.increment(-bidTokens.toLong())).await()
+        if (bidStars > 0) userRepo.adjustStarsAndLeague(posterId, -bidStars)
 
         val ref = col.document()
         ref.set(mapOf(
             "posterId" to posterId,
             "posterName" to posterName,
+            "region" to region,
             "bidStars" to bidStars,
             "bidTokens" to bidTokens,
             "participants" to listOf(posterId),
@@ -38,6 +38,28 @@ class IzazovRepository {
             "runnerId" to "",
             "createdAt" to System.currentTimeMillis()
         )).await()
+
+        // Notify region members about new challenge
+        runCatching {
+            val regionFilter = if (region == "Srbija") "" else region
+            val regionUsers = users.whereEqualTo("region", regionFilter).get().await()
+            val timestamp = System.currentTimeMillis()
+            val batch = db.batch()
+            regionUsers.documents.forEach { doc ->
+                if (doc.id != posterId) {
+                    batch.set(db.collection("notifications").document(), mapOf(
+                        "userId" to doc.id,
+                        "channel" to "OTHER",
+                        "title" to "Novi izazov! ⚔",
+                        "message" to "$posterName je postavio izazov (${bidStars}★, ${bidTokens}T). Priključi se!",
+                        "timestamp" to timestamp,
+                        "isRead" to false
+                    ))
+                }
+            }
+            batch.commit().await()
+        }
+
         return ref.id
     }
 
@@ -48,10 +70,8 @@ class IzazovRepository {
         bidStars: Int,
         bidTokens: Int
     ) {
-        val updates = mutableMapOf<String, Any>()
-        if (bidStars > 0) updates["stars"] = FieldValue.increment(-bidStars.toLong())
-        if (bidTokens > 0) updates["tokens"] = FieldValue.increment(-bidTokens.toLong())
-        if (updates.isNotEmpty()) users.document(uid).update(updates).await()
+        if (bidTokens > 0) users.document(uid).update("tokens", FieldValue.increment(-bidTokens.toLong())).await()
+        if (bidStars > 0) userRepo.adjustStarsAndLeague(uid, -bidStars)
 
         col.document(izazovId).update(mapOf(
             "participants" to FieldValue.arrayUnion(uid),
@@ -97,29 +117,27 @@ class IzazovRepository {
             "winnerId" to winnerId,
             "runnerId" to runnerId
         ))
-        if (winnerStars > 0 || winnerTokens > 0) {
-            val winUpdates = mutableMapOf<String, Any>()
-            if (winnerStars > 0) winUpdates["stars"] = FieldValue.increment(winnerStars.toLong())
-            if (winnerTokens > 0) winUpdates["tokens"] = FieldValue.increment(winnerTokens.toLong())
-            batch.update(users.document(winnerId), winUpdates)
-        }
-        if (runnerId.isNotEmpty() && (runnerStars > 0 || runnerTokens > 0)) {
-            val runUpdates = mutableMapOf<String, Any>()
-            if (runnerStars > 0) runUpdates["stars"] = FieldValue.increment(runnerStars.toLong())
-            if (runnerTokens > 0) runUpdates["tokens"] = FieldValue.increment(runnerTokens.toLong())
-            batch.update(users.document(runnerId), runUpdates)
+        if (winnerTokens > 0) batch.update(users.document(winnerId), "tokens", FieldValue.increment(winnerTokens.toLong()))
+        if (runnerId.isNotEmpty() && runnerTokens > 0) {
+            batch.update(users.document(runnerId), "tokens", FieldValue.increment(runnerTokens.toLong()))
         }
         batch.commit().await()
+
+        // Stars go through adjustStarsAndLeague (its own transaction) so league stays in sync
+        if (winnerStars > 0) userRepo.adjustStarsAndLeague(winnerId, winnerStars)
+        if (runnerId.isNotEmpty() && runnerStars > 0) userRepo.adjustStarsAndLeague(runnerId, runnerStars)
     }
 
-    fun listenToOpenSessions(onSessions: (List<IzazovSession>) -> Unit): ListenerRegistration {
-        return col.whereEqualTo("status", "open")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(20)
-            .addSnapshotListener { snap, _ ->
-                val list = snap?.documents?.mapNotNull { doc -> parseSession(doc.id, doc.data) } ?: emptyList()
-                onSessions(list)
-            }
+    fun listenToOpenSessions(region: String, onSessions: (List<IzazovSession>) -> Unit): ListenerRegistration {
+        var query: Query = col.whereEqualTo("status", "open")
+        if (region.isNotEmpty()) query = query.whereEqualTo("region", region)
+        return query.limit(20).addSnapshotListener { snap, _ ->
+            val list = snap?.documents
+                ?.mapNotNull { doc -> parseSession(doc.id, doc.data) }
+                ?.sortedByDescending { it.createdAt }
+                ?: emptyList()
+            onSessions(list)
+        }
     }
 
     fun listenToSession(izazovId: String, onUpdate: (IzazovSession) -> Unit): ListenerRegistration {
@@ -139,6 +157,7 @@ class IzazovRepository {
                 id = id,
                 posterId = data["posterId"] as? String ?: "",
                 posterName = data["posterName"] as? String ?: "",
+                region = data["region"] as? String ?: "",
                 bidStars = (data["bidStars"] as? Long)?.toInt() ?: 0,
                 bidTokens = (data["bidTokens"] as? Long)?.toInt() ?: 0,
                 participants = (data["participants"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),

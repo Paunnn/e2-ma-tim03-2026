@@ -124,7 +124,10 @@ fun AppNavigation(navController: NavHostController) {
 
         composable(Screen.Profile.route) {
             ProfileScreen(
-                onNavigateHome = { navController.popBackStack() },
+                onNavigateHome = { navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } } },
+                onLeaderboardClick = { navController.navigate(Screen.Leaderboard.route) },
+                onMapClick = { navController.navigate(Screen.Region.route) },
+                onFriendsClick = { navController.navigate(Screen.Friends.route) },
                 onLogout = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }

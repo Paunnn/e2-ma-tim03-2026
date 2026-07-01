@@ -196,6 +196,49 @@ class UserRepository {
         else -> "Ligu $league"
     }
 
+    data class StarLeagueChange(val newStars: Int, val oldLeague: Int, val newLeague: Int)
+
+    // Central entry point for any star gain/loss (missions, izazov, turnir bonuses...)
+    // so that `league` never drifts out of sync with `stars` and league-change
+    // notifications always fire, regardless of which feature awarded the stars.
+    suspend fun adjustStarsAndLeague(uid: String, delta: Int): StarLeagueChange {
+        val docRef = db.collection("users").document(uid)
+        val result = db.runTransaction { tx ->
+            val snap = tx.get(docRef)
+            val oldStars = snap.getLong("stars")?.toInt() ?: 0
+            val oldLeague = snap.getLong("league")?.toInt() ?: 0
+            val newStars = (oldStars + delta).coerceAtLeast(0)
+            val actualDelta = newStars - oldStars
+            val newLeague = leagueForStars(newStars)
+            tx.update(docRef, mapOf(
+                "stars" to newStars,
+                "league" to newLeague,
+                "weeklyStars" to FieldValue.increment(actualDelta.toLong()),
+                "monthlyStars" to FieldValue.increment(actualDelta.toLong())
+            ))
+            StarLeagueChange(newStars, oldLeague, newLeague)
+        }.await()
+
+        if (result.oldLeague != result.newLeague) {
+            val leagueName = leagueNameFor(result.newLeague)
+            val msg = if (result.newLeague > result.oldLeague)
+                "Napredovali ste u $leagueName ligu! Čestitamo! Dnevni bonus: ${5 + result.newLeague} tokena."
+            else
+                "Pali ste u $leagueName ligu."
+            runCatching {
+                db.collection("notifications").add(mapOf(
+                    "userId" to uid,
+                    "channel" to "OTHER",
+                    "title" to "Promena lige!",
+                    "message" to msg,
+                    "timestamp" to System.currentTimeMillis(),
+                    "isRead" to false
+                )).await()
+            }
+        }
+        return result
+    }
+
     suspend fun addTokens(uid: String, count: Int) {
         if (count == 0) return
         db.collection("users").document(uid).update("tokens", FieldValue.increment(count.toLong())).await()

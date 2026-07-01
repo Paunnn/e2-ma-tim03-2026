@@ -3,6 +3,7 @@ package com.tim03.slagalica.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
+import com.tim03.slagalica.data.repository.MapPlayerDot
 import com.tim03.slagalica.data.repository.RegionLeaderboardEntry
 import com.tim03.slagalica.data.repository.RegionRepository
 import com.tim03.slagalica.data.repository.RegionStats
@@ -14,9 +15,11 @@ import kotlinx.coroutines.launch
 
 data class RegionUiState(
     val leaderboard: List<RegionStats> = emptyList(),
+    val mapPlayers: List<MapPlayerDot> = emptyList(),
     val selectedRegion: RegionStats? = null,
     val regionPlayers: List<RegionLeaderboardEntry> = emptyList(),
     val myRegion: String = "",
+    val myUid: String = "",
     val isLoading: Boolean = false,
     val isLoadingPlayers: Boolean = false
 )
@@ -39,11 +42,16 @@ class RegionViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             runCatching {
-                val myRegion = userRepo.getCurrentUser()?.region ?: ""
+                val me = userRepo.getCurrentUser()
+                val myRegion = me?.region ?: ""
+                val myUid = me?.uid ?: auth.currentUser?.uid ?: ""
                 val boards = regionRepo.getRegionalLeaderboard()
+                val mapPlayers = regionRepo.getAllPlayersForMap()
                 _uiState.value = _uiState.value.copy(
                     leaderboard = boards,
+                    mapPlayers = mapPlayers,
                     myRegion = myRegion,
+                    myUid = myUid,
                     isLoading = false
                 )
             }.onFailure {

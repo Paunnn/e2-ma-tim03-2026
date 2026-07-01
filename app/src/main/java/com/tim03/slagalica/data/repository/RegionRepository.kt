@@ -5,6 +5,12 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.tim03.slagalica.data.model.User
 import kotlinx.coroutines.tasks.await
 
+data class MapPlayerDot(
+    val uid: String,
+    val username: String,
+    val region: String
+)
+
 data class RegionStats(
     val region: String,
     val icon: String,
@@ -77,6 +83,18 @@ class RegionRepository {
             )
         }.sortedByDescending { it.monthlyStars }
         return entries.mapIndexed { i, e -> e.copy(rank = i + 1) }
+    }
+
+    suspend fun getAllPlayersForMap(): List<MapPlayerDot> {
+        val snap = db.collection("users").get().await()
+        return snap.documents.mapNotNull { doc ->
+            val region = doc.getString("region")?.ifBlank { null } ?: return@mapNotNull null
+            MapPlayerDot(
+                uid = doc.id,
+                username = doc.getString("username") ?: "",
+                region = region
+            )
+        }
     }
 
     fun myRegion(): String {

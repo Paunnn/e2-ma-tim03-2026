@@ -94,6 +94,7 @@ fun IzazovScreen(
                                 session = session,
                                 myUid = state.myUid,
                                 onJoin = { vm.joinIzazov(session) },
+                                onPlay = { vm.playExisting(session) },
                                 onViewResults = { vm.viewResults(session) }
                             )
                         }
@@ -131,10 +132,11 @@ fun IzazovScreen(
 }
 
 @Composable
-private fun IzazovCard(
+internal fun IzazovCard(
     session: IzazovSession,
     myUid: String,
     onJoin: () -> Unit,
+    onPlay: () -> Unit = {},
     onViewResults: () -> Unit
 ) {
     val isMine = session.participants.contains(myUid)
@@ -174,7 +176,14 @@ private fun IzazovCard(
                         }
                     }
                     isMine -> {
-                        // Already joined but hasn't played (shouldn't happen in normal flow)
+                        Button(
+                            onClick = onPlay,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("Igraj", color = Navy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                     !session.canJoin(myUid) -> {
                         Text("Puno", color = MediumGray, fontSize = 12.sp)
@@ -223,7 +232,7 @@ private fun IzazovCard(
 }
 
 @Composable
-private fun BidChip(text: String, color: Color) {
+internal fun BidChip(text: String, color: Color) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
@@ -235,7 +244,7 @@ private fun BidChip(text: String, color: Color) {
 }
 
 @Composable
-private fun CreateIzazovDialog(
+internal fun CreateIzazovDialog(
     bidStars: Int,
     bidTokens: Int,
     myStars: Int,
@@ -254,32 +263,42 @@ private fun CreateIzazovDialog(
                 Text("Postavi ulog koji svi moraju platiti:", color = LightGray, fontSize = 13.sp)
                 Spacer(Modifier.height(16.dp))
 
+                val maxBidStars = minOf(10, myStars)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("★ Zvezde (0-10):", color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Text("$myStars dostupno", color = MediumGray, fontSize = 10.sp)
                 }
-                Slider(
-                    value = bidStars.toFloat(),
-                    onValueChange = { onBidStarsChange(it.toInt()) },
-                    valueRange = 0f..minOf(10f, myStars.toFloat()),
-                    steps = minOf(9, myStars - 1).coerceAtLeast(0),
-                    colors = SliderDefaults.colors(thumbColor = Gold, activeTrackColor = Gold)
-                )
+                if (maxBidStars > 0) {
+                    Slider(
+                        value = bidStars.toFloat(),
+                        onValueChange = { onBidStarsChange(it.toInt()) },
+                        valueRange = 0f..maxBidStars.toFloat(),
+                        steps = (maxBidStars - 1).coerceAtLeast(0),
+                        colors = SliderDefaults.colors(thumbColor = Gold, activeTrackColor = Gold)
+                    )
+                } else {
+                    Text("Nemate zvezda za ulaganje.", color = MediumGray, fontSize = 11.sp)
+                }
                 Text("Ulog: $bidStars ★", color = Gold, fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
                 Spacer(Modifier.height(12.dp))
 
+                val maxBidTokens = minOf(2, myTokens)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("T Tokeni (0-2):", color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Text("$myTokens dostupno", color = MediumGray, fontSize = 10.sp)
                 }
-                Slider(
-                    value = bidTokens.toFloat(),
-                    onValueChange = { onBidTokensChange(it.toInt()) },
-                    valueRange = 0f..minOf(2f, myTokens.toFloat()),
-                    steps = minOf(1, myTokens - 1).coerceAtLeast(0),
-                    colors = SliderDefaults.colors(thumbColor = Accent4, activeTrackColor = Accent4)
-                )
+                if (maxBidTokens > 0) {
+                    Slider(
+                        value = bidTokens.toFloat(),
+                        onValueChange = { onBidTokensChange(it.toInt()) },
+                        valueRange = 0f..maxBidTokens.toFloat(),
+                        steps = (maxBidTokens - 1).coerceAtLeast(0),
+                        colors = SliderDefaults.colors(thumbColor = Accent4, activeTrackColor = Accent4)
+                    )
+                } else {
+                    Text("Nemate tokena za ulaganje.", color = MediumGray, fontSize = 11.sp)
+                }
                 Text("Ulog: $bidTokens T", color = Accent4, fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
                 if (bidStars == 0 && bidTokens == 0) {
@@ -303,7 +322,7 @@ private fun CreateIzazovDialog(
 }
 
 @Composable
-private fun IzazovGameScreen(
+internal fun IzazovGameScreen(
     questions: List<IzazovQuestion>,
     currentIndex: Int,
     selectedAnswer: Int,
@@ -441,7 +460,7 @@ private fun IzazovGameScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun IzazovResultsScreen(
+internal fun IzazovResultsScreen(
     session: IzazovSession?,
     myUid: String,
     onBack: () -> Unit

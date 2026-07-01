@@ -20,7 +20,7 @@
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="PhysicalDevice" identifier="serial=31218811" />
+                <DeviceId pluginId="PhysicalDevice" identifier="serial=RF8M213RGKL" />
               </handle>
             </Target>
           </targets>

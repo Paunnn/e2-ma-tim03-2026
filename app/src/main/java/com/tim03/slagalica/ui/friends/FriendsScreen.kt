@@ -1,6 +1,7 @@
 package com.tim03.slagalica.ui.friends
 
 import android.app.Activity
+import android.content.ContextWrapper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -122,7 +123,9 @@ fun FriendsScreen(
                     onQueryChange = { vm.setSearchQuery(it) },
                     onSearch = { vm.searchUser() },
                     onQrScan = {
-                        val integrator = IntentIntegrator(context as Activity)
+                        var ctx = context
+                        while (ctx is ContextWrapper && ctx !is Activity) ctx = ctx.baseContext
+                        val integrator = IntentIntegrator(ctx as Activity)
                         integrator.setPrompt("Skeniraj QR kod prijatelja")
                         integrator.setBeepEnabled(false)
                         integrator.setOrientationLocked(true)
@@ -202,9 +205,7 @@ private fun FriendCard(friend: FriendInfo, onRemove: () -> Unit, onInvite: () ->
                         Text(friend.region, color = MediumGray, fontSize = 11.sp)
                     }
                 }
-                if (friend.monthlyStars > 0) {
-                    Text("${friend.monthlyStars}★ ovog meseca", color = MediumGray, fontSize = 11.sp)
-                }
+                Text("Mesečni rang: ${friend.monthlyStars}★", color = MediumGray, fontSize = 11.sp)
             }
             Spacer(Modifier.width(4.dp))
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {

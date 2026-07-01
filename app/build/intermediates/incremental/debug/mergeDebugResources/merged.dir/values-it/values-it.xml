@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="about">Info</string>
+    <string name="about_message">Questo software usa dati delle mappe forniti da OpenStreetMap.org</string>
     <string msgid="8397015543330865059" name="android.credentials.TYPE_PASSWORD_CREDENTIAL">"Password"</string>
     <string msgid="3929015085059320822" name="androidx.credentials.TYPE_PUBLIC_KEY_CREDENTIAL">"Passkey"</string>
     <string msgid="881409763997275156" name="call_notification_answer_action">"Rispondi"</string>
@@ -30,12 +32,14 @@
     <string name="common_signin_button_text">Accedi</string>
     <string name="common_signin_button_text_long">Accedi con Google</string>
     <string msgid="3260749812566568062" name="copy_toast_msg">"Link copiato negli appunti"</string>
+    <string name="cyclemap">Mappa ciclistica</string>
     <string msgid="8038256446254964252" name="default_error_message">"Valore non valido"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"Finestra popup"</string>
     <string msgid="1890207353314751437" name="dropdown_menu">"Menu a discesa"</string>
     <string msgid="4566929209979330987" name="fallback_menu_item_copy_link">"Copia link"</string>
     <string msgid="3413186855122069269" name="fallback_menu_item_open_in_browser">"Apri nel browser"</string>
     <string msgid="7145444925855055364" name="fallback_menu_item_share_link">"Condividi link"</string>
+    <string name="hills">Rilievo</string>
     <string msgid="6827826412747255547" name="in_progress">"In corso"</string>
     <string msgid="7933458017204019916" name="indeterminate">"Elemento parzialmente selezionato"</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"Comprimi il riquadro inferiore"</string>
@@ -94,6 +98,8 @@
     <string msgid="6616362054113087709" name="m3c_time_picker_pm">"PM"</string>
     <string msgid="1805687647081129904" name="m3c_tooltip_long_press_label">"Mostra descrizione comando"</string>
     <string msgid="5460405025248574620" name="m3c_tooltip_pane_description">"Descrizione comando"</string>
+    <string name="map_mode">Tipo mappa</string>
+    <string name="my_location">La mia posizione</string>
     <string msgid="542007171693138492" name="navigation_menu">"Menu di navigazione"</string>
     <string msgid="6610465462668679431" name="not_selected">"Opzione non selezionata"</string>
     <string msgid="875452955155264703" name="off">"Off"</string>
@@ -107,4 +113,10 @@
     <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g> percento."</string>
     <string msgid="3765533235322692011" name="tooltip_description">"Descrizione comando"</string>
     <string msgid="3124740595719787496" name="tooltip_label">"Mostra descrizione comando"</string>
+    <string name="topo">Sentieri</string>
+    <string name="unknown">Sconosciuta</string>
+    <string name="zxing_app_name">Barcode Scanner</string>
+    <string name="zxing_button_ok">OK</string>
+    <string name="zxing_msg_camera_framework_bug">Spiacenti, la fotocamera Android ha riscontrato un problema. Potrebbe essere necessario riavviare il dispositivo.</string>
+    <string name="zxing_msg_default_status">Posiziona un codice a barre dentro il mirino rettangolare per la scansione.</string>
 </resources>

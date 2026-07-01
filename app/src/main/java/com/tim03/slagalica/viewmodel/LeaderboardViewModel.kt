@@ -5,11 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.tim03.slagalica.data.model.LeaderboardEntry
 import com.tim03.slagalica.data.repository.LeaderboardRepository
+import com.tim03.slagalica.data.repository.RewardResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+data class PendingReward(val tokens: Int, val rank: Int, val isMonthly: Boolean)
 
 data class LeaderboardUiState(
     val weeklyEntries: List<LeaderboardEntry> = emptyList(),
@@ -18,7 +21,8 @@ data class LeaderboardUiState(
     val monthRange: Pair<String, String> = Pair("", ""),
     val myUid: String = "",
     val isLoading: Boolean = false,
-    val selectedTab: Int = 0
+    val selectedTab: Int = 0,
+    val pendingReward: PendingReward? = null
 )
 
 class LeaderboardViewModel(
@@ -34,14 +38,35 @@ class LeaderboardViewModel(
             weekRange = repo.getCurrentWeekDates(),
             monthRange = repo.getCurrentMonthDates()
         )
+        checkCycleRewards()
         startAutoRefresh()
+    }
+
+    private fun checkCycleRewards() {
+        viewModelScope.launch {
+            runCatching {
+                val weeklyResult = repo.checkAndDistributeWeeklyRewards()
+                if (weeklyResult is RewardResult.Earned) {
+                    _uiState.value = _uiState.value.copy(
+                        pendingReward = PendingReward(weeklyResult.tokens, weeklyResult.rank, false)
+                    )
+                    return@runCatching
+                }
+                val monthlyResult = repo.checkAndDistributeMonthlyRewards()
+                if (monthlyResult is RewardResult.Earned) {
+                    _uiState.value = _uiState.value.copy(
+                        pendingReward = PendingReward(monthlyResult.tokens, monthlyResult.rank, true)
+                    )
+                }
+            }
+        }
     }
 
     private fun startAutoRefresh() {
         viewModelScope.launch {
             while (true) {
                 refresh()
-                delay(120_000) // 2 minutes
+                delay(120_000)
             }
         }
     }
@@ -65,5 +90,16 @@ class LeaderboardViewModel(
 
     fun selectTab(tab: Int) {
         _uiState.value = _uiState.value.copy(selectedTab = tab)
+    }
+
+    fun dismissReward() {
+        val reward = _uiState.value.pendingReward ?: return
+        viewModelScope.launch {
+            runCatching {
+                if (reward.isMonthly) repo.clearPendingMonthlyReward()
+                else repo.clearPendingWeeklyReward()
+            }
+            _uiState.value = _uiState.value.copy(pendingReward = null)
+        }
     }
 }

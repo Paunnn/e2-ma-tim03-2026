@@ -4,6 +4,7 @@ data class IzazovSession(
     val id: String = "",
     val posterId: String = "",
     val posterName: String = "",
+    val region: String = "",
     val bidStars: Int = 0,
     val bidTokens: Int = 0,
     val participants: List<String> = emptyList(),

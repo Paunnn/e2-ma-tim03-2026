@@ -3,6 +3,8 @@ package com.tim03.slagalica.data.repository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.SetOptions
 import com.tim03.slagalica.data.model.DailyMissions
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
@@ -12,6 +14,7 @@ import java.util.Locale
 class DailyMissionsRepository {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
+    private val userRepo = UserRepository()
     private val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
     private fun today() = dateFmt.format(Date())
@@ -52,12 +55,39 @@ class DailyMissionsRepository {
         }
     }
 
-    // Returns true if mission was newly completed (was false before)
+    fun observeTodayMissions(onUpdate: (DailyMissions) -> Unit): ListenerRegistration {
+        val uid = auth.currentUser?.uid
+            ?: return db.collection("daily_missions").addSnapshotListener { _, _ -> }
+        val id = "${uid}_${today()}"
+        return db.collection("daily_missions").document(id).addSnapshotListener { snap, _ ->
+            if (snap == null || !snap.exists()) {
+                onUpdate(DailyMissions(userId = uid, date = today()))
+                return@addSnapshotListener
+            }
+            onUpdate(DailyMissions(
+                userId = uid,
+                date = today(),
+                winGame = snap.getBoolean("winGame") ?: false,
+                sendMessage = snap.getBoolean("sendMessage") ?: false,
+                playFriendly = snap.getBoolean("playFriendly") ?: false,
+                winTournament = snap.getBoolean("winTournament") ?: false,
+                bonusCollected = snap.getBoolean("bonusCollected") ?: false
+            ))
+        }
+    }
+
+    // Returns true if mission was newly completed (was false before).
+    // Also awards 3 stars immediately so any caller path gets the reward.
     suspend fun completeMission(field: String): Boolean {
+        val uid = auth.currentUser?.uid ?: return false
         val id = docId() ?: return false
-        val doc = db.collection("daily_missions").document(id).get().await()
+        val docRef = db.collection("daily_missions").document(id)
+        val doc = docRef.get().await()
         if (doc.getBoolean(field) == true) return false
-        db.collection("daily_missions").document(id).update(field, true).await()
+        // set+merge instead of update: the day's doc may not exist yet if this is
+        // the first mission action of the day and Home hasn't opened to create it.
+        docRef.set(mapOf(field to true), SetOptions.merge()).await()
+        runCatching { userRepo.adjustStarsAndLeague(uid, 3) }
         return true
     }
 
@@ -76,15 +106,12 @@ class DailyMissionsRepository {
             .all { doc.getBoolean(it) == true }
         if (!allDone) return false
 
-        db.collection("daily_missions").document(id).update("bonusCollected", true).await()
+        db.collection("daily_missions").document(id)
+            .set(mapOf("bonusCollected" to true), SetOptions.merge()).await()
         db.collection("users").document(uid).update(
-            mapOf(
-                "tokens" to FieldValue.increment(2L),
-                "stars" to FieldValue.increment(3L),
-                "weeklyStars" to FieldValue.increment(3L),
-                "monthlyStars" to FieldValue.increment(3L)
-            )
+            "tokens", FieldValue.increment(2L)
         ).await()
+        runCatching { userRepo.adjustStarsAndLeague(uid, 3) }
         db.collection("notifications").add(
             mapOf(
                 "userId" to uid,
@@ -98,17 +125,4 @@ class DailyMissionsRepository {
         return true
     }
 
-    // Awards 3 stars for a single mission completion
-    suspend fun awardMissionStars() {
-        val uid = auth.currentUser?.uid ?: return
-        runCatching {
-            db.collection("users").document(uid).update(
-                mapOf(
-                    "stars" to FieldValue.increment(3L),
-                    "weeklyStars" to FieldValue.increment(3L),
-                    "monthlyStars" to FieldValue.increment(3L)
-                )
-            ).await()
-        }
-    }
 }

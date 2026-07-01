@@ -63,6 +63,10 @@ fun HomeScreen(
     val bonusCollected by missionsViewModel.bonusJustCollected.collectAsStateWithLifecycle()
     val incomingInvite = homeState.incomingInvite
 
+    LaunchedEffect(Unit) {
+        homeViewModel.loadUser()
+    }
+
     // Incoming friend invite dialog
     if (incomingInvite != null) {
         AlertDialog(

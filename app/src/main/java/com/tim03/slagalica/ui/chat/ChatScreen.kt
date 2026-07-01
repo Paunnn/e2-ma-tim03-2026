@@ -132,22 +132,23 @@ fun ChatScreen(
 
 @Composable
 private fun ChatBubble(msg: ChatMessage, isMe: Boolean) {
-    val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val dateFmt = remember { SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
     ) {
-        if (!isMe) {
-            Text(
-                msg.senderName,
-                color = LightGray,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+        Text(
+            msg.senderName,
+            color = LightGray,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(
+                start = if (isMe) 0.dp else 4.dp,
+                end = if (isMe) 4.dp else 0.dp,
+                bottom = 2.dp
             )
-        }
+        )
         Row(
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
@@ -172,7 +173,7 @@ private fun ChatBubble(msg: ChatMessage, isMe: Boolean) {
                     Text(msg.text, color = White, fontSize = 14.sp, lineHeight = 18.sp)
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        timeFmt.format(Date(msg.timestamp)),
+                        dateFmt.format(Date(msg.timestamp)),
                         color = if (isMe) White.copy(alpha = 0.65f) else MediumGray,
                         fontSize = 9.sp,
                         modifier = Modifier.align(Alignment.End)

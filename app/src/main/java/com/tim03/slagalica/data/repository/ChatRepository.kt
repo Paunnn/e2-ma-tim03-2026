@@ -30,11 +30,37 @@ class ChatRepository {
     }
 
     suspend fun sendMessage(region: String, uid: String, username: String, text: String) {
+        val trimmed = text.trim()
         db.collection("chats").document(region).collection("messages").add(mapOf(
             "senderUid" to uid,
             "senderName" to username,
-            "text" to text.trim(),
+            "text" to trimmed,
             "timestamp" to System.currentTimeMillis()
         )).await()
+
+        // Notify region members so they get a local notification even when on a different screen.
+        // (Killed-app push requires Firebase Cloud Functions — not implemented here.)
+        runCatching {
+            val regionFilter = if (region == "Srbija") "" else region
+            val regionUsers = db.collection("users")
+                .whereEqualTo("region", regionFilter)
+                .get().await()
+            val preview = if (trimmed.length > 80) trimmed.take(77) + "…" else trimmed
+            val timestamp = System.currentTimeMillis()
+            val batch = db.batch()
+            regionUsers.documents.forEach { doc ->
+                if (doc.id != uid) {
+                    batch.set(db.collection("notifications").document(), mapOf(
+                        "userId" to doc.id,
+                        "channel" to "CHAT",
+                        "title" to "$username ($region)",
+                        "message" to preview,
+                        "timestamp" to timestamp,
+                        "isRead" to false
+                    ))
+                }
+            }
+            batch.commit().await()
+        }
     }
 }

@@ -19,9 +19,10 @@ import kotlinx.coroutines.launch
 enum class NotifFilter { ALL, UNREAD, READ, CHAT, RANKING, REWARD, OTHER }
 
 class NotificationsViewModel(
-    application: Application,
-    private val repo: NotificationRepository = NotificationRepository()
+    application: Application
 ) : AndroidViewModel(application) {
+
+    private val repo: NotificationRepository = NotificationRepository()
 
     private val _filter = MutableStateFlow(NotifFilter.ALL)
     val filter: StateFlow<NotifFilter> = _filter.asStateFlow()

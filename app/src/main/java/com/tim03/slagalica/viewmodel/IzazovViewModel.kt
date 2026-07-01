@@ -34,16 +34,15 @@ data class IzazovUiState(
     val openSessions: List<IzazovSession> = emptyList(),
     val activeSession: IzazovSession? = null,
     val activeIzazovId: String = "",
-    // Create dialog
     val createBidStars: Int = 0,
     val createBidTokens: Int = 0,
-    // Game phase
     val gameQuestions: List<IzazovQuestion> = emptyList(),
     val currentQuestionIndex: Int = 0,
     val selectedAnswer: Int = -1,
     val gameScore: Int = 0,
     val gameComplete: Boolean = false,
     val myUid: String = "",
+    val myRegion: String = "",
     val myTokens: Int = 0,
     val myStars: Int = 0
 )
@@ -63,7 +62,6 @@ class IzazovViewModel(
 
     init {
         loadUser()
-        startListeningToOpenSessions()
     }
 
     private fun loadUser() {
@@ -71,18 +69,21 @@ class IzazovViewModel(
         viewModelScope.launch {
             runCatching {
                 val user = userRepo.getCurrentUser() ?: return@runCatching
+                val region = user.region.ifEmpty { "Srbija" }
                 _uiState.value = _uiState.value.copy(
                     myUid = user.uid,
+                    myRegion = region,
                     myTokens = user.tokens,
                     myStars = user.stars
                 )
+                startListeningToOpenSessions(region)
             }
         }
     }
 
-    private fun startListeningToOpenSessions() {
+    private fun startListeningToOpenSessions(region: String = _uiState.value.myRegion) {
         listListener?.remove()
-        listListener = repo.listenToOpenSessions { sessions ->
+        listListener = repo.listenToOpenSessions(region) { sessions ->
             _uiState.value = _uiState.value.copy(openSessions = sessions)
         }
     }
@@ -103,7 +104,7 @@ class IzazovViewModel(
             runCatching {
                 val user = userRepo.getCurrentUser() ?: return@runCatching
                 if (user.stars < s.createBidStars || user.tokens < s.createBidTokens) return@runCatching
-                val izazovId = repo.createIzazov(uid, user.username, s.createBidStars, s.createBidTokens)
+                val izazovId = repo.createIzazov(uid, user.username, s.myRegion, s.createBidStars, s.createBidTokens)
                 startGame(izazovId, s.createBidStars, s.createBidTokens)
             }
         }
@@ -120,6 +121,10 @@ class IzazovViewModel(
                 startGame(session.id, session.bidStars, session.bidTokens)
             }
         }
+    }
+
+    fun playExisting(session: IzazovSession) {
+        startGame(session.id, session.bidStars, session.bidTokens)
     }
 
     fun viewResults(session: IzazovSession) {
@@ -188,9 +193,13 @@ class IzazovViewModel(
         listListener = null
         sessionListener?.remove()
         sessionListener = null
-        _uiState.value = IzazovUiState()
+        val region = _uiState.value.myRegion
+        val uid = _uiState.value.myUid
+        val tokens = _uiState.value.myTokens
+        val stars = _uiState.value.myStars
+        _uiState.value = IzazovUiState(myUid = uid, myRegion = region, myTokens = tokens, myStars = stars)
+        startListeningToOpenSessions(region)
         loadUser()
-        startListeningToOpenSessions()
     }
 
     override fun onCleared() {

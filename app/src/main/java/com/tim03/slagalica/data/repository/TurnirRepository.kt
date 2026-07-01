@@ -10,6 +10,7 @@ import kotlinx.coroutines.tasks.await
 class TurnirRepository {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
+    private val userRepo = UserRepository()
     private val queue = db.collection("tournament_queue")
     private val results = db.collection("tournament_results")
     private val turnirs = db.collection("turnir_sessions")
@@ -220,13 +221,9 @@ class TurnirRepository {
         // Winner gets 3 extra tokens + 10 extra stars (on top of regular partija rewards)
         runCatching {
             db.collection("users").document(winnerUid).update(
-                mapOf(
-                    "tokens" to FieldValue.increment(3L),
-                    "stars" to FieldValue.increment(10L),
-                    "weeklyStars" to FieldValue.increment(10L),
-                    "monthlyStars" to FieldValue.increment(10L)
-                )
+                "tokens", FieldValue.increment(3L)
             ).await()
+            userRepo.adjustStarsAndLeague(winnerUid, 10)
             db.collection("notifications").add(
                 mapOf(
                     "userId" to winnerUid,

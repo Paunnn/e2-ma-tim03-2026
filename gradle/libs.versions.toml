@@ -13,6 +13,7 @@ coroutines = "1.8.1"
 googleServices = "4.4.2"
 zxing = "3.5.3"
 zxingEmbedded = "4.3.0"
+osmdroid = "6.1.18"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -36,6 +37,7 @@ firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging-ktx" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxingEmbedded" }
+osmdroid = { group = "org.osmdroid", name = "osmdroid-android", version.ref = "osmdroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -63,6 +63,9 @@ private fun leagueColor(league: Int) = when (league) {
 @Composable
 fun ProfileScreen(
     onNavigateHome: () -> Unit = {},
+    onLeaderboardClick: () -> Unit = {},
+    onMapClick: () -> Unit = {},
+    onFriendsClick: () -> Unit = {},
     onLogout: () -> Unit = {},
     onChangePassword: () -> Unit = {},
     viewModel: ProfileViewModel = viewModel()
@@ -128,7 +131,14 @@ fun ProfileScreen(
             )
         },
         bottomBar = {
-            MozaikBottomNav(selectedIndex = 4, onHomeClick = onNavigateHome)
+            MozaikBottomNav(
+                selectedIndex = 4,
+                onHomeClick = onNavigateHome,
+                onLeaderboardClick = onLeaderboardClick,
+                onMapClick = onMapClick,
+                onFriendsClick = onFriendsClick,
+                onProfileClick = {}
+            )
         }
     ) { padding ->
         when {

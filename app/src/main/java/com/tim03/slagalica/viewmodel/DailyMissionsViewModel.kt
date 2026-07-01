@@ -2,6 +2,7 @@ package com.tim03.slagalica.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.firestore.ListenerRegistration
 import com.tim03.slagalica.data.model.DailyMissions
 import com.tim03.slagalica.data.repository.DailyMissionsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,62 +20,40 @@ class DailyMissionsViewModel(
     private val _bonusJustCollected = MutableStateFlow(false)
     val bonusJustCollected: StateFlow<Boolean> = _bonusJustCollected.asStateFlow()
 
-    init { load() }
+    private var listener: ListenerRegistration? = null
 
-    fun load() {
+    init { startListening() }
+
+    private fun startListening() {
         viewModelScope.launch {
-            runCatching { _missions.value = repo.getTodayMissions() }
+            // Ensure document exists before attaching listener
+            runCatching { repo.getTodayMissions() }
         }
-    }
-
-    fun completeWinGame() {
-        viewModelScope.launch {
-            val newlyCompleted = repo.completeWinGame()
-            if (newlyCompleted) {
-                repo.awardMissionStars()
-                _missions.value = repo.getTodayMissions()
-                tryCollectBonus()
+        listener?.remove()
+        listener = repo.observeTodayMissions { missions ->
+            _missions.value = missions
+            // Auto-collect bonus when all 4 missions complete
+            if (!missions.bonusCollected && missions.winGame && missions.sendMessage
+                && missions.playFriendly && missions.winTournament) {
+                viewModelScope.launch {
+                    val collected = repo.collectBonusIfEligible()
+                    if (collected) _bonusJustCollected.value = true
+                }
             }
         }
     }
 
-    fun completeSendMessage() {
-        viewModelScope.launch {
-            val newlyCompleted = repo.completeSendMessage()
-            if (newlyCompleted) {
-                repo.awardMissionStars()
-                _missions.value = repo.getTodayMissions()
-                tryCollectBonus()
-            }
-        }
-    }
-
-    fun completePlayFriendly() {
-        viewModelScope.launch {
-            val newlyCompleted = repo.completePlayFriendly()
-            if (newlyCompleted) {
-                repo.awardMissionStars()
-                _missions.value = repo.getTodayMissions()
-                tryCollectBonus()
-            }
-        }
-    }
-
-    fun completeWinTournament() {
-        viewModelScope.launch {
-            val newlyCompleted = repo.completeWinTournament()
-            if (newlyCompleted) {
-                repo.awardMissionStars()
-                _missions.value = repo.getTodayMissions()
-                tryCollectBonus()
-            }
-        }
-    }
-
-    private suspend fun tryCollectBonus() {
-        val collected = repo.collectBonusIfEligible()
-        if (collected) _bonusJustCollected.value = true
-    }
+    // Stars are now awarded inside the repository's completeMission(), so callers
+    // only need to call the complete* functions — no separate awardMissionStars needed.
+    fun completeWinGame() { viewModelScope.launch { runCatching { repo.completeWinGame() } } }
+    fun completeSendMessage() { viewModelScope.launch { runCatching { repo.completeSendMessage() } } }
+    fun completePlayFriendly() { viewModelScope.launch { runCatching { repo.completePlayFriendly() } } }
+    fun completeWinTournament() { viewModelScope.launch { runCatching { repo.completeWinTournament() } } }
 
     fun clearBonusFlag() { _bonusJustCollected.value = false }
+
+    override fun onCleared() {
+        super.onCleared()
+        listener?.remove()
+    }
 }

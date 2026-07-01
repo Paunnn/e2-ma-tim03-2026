@@ -1,29 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.tim03.slagalica.app-mergeDebugResources-60:/values-v21/values-v21.xml",
+            "outputFile": "com.tim03.slagalica.app-mergeDebugResources-62:/values-v21/values-v21.xml",
             "map": [
                 {
-                    "source": "/home/gaga/.gradle/caches/8.14/transforms/d24f3c7e10cb0729774e838a60f3d8b4/transformed/core-1.13.1/res/values-v21/values-v21.xml",
-                    "from": {
-                        "startLines": "2,3,4,5,6,7,8,9,10,13",
-                        "startColumns": "4,4,4,4,4,4,4,4,4,4",
-                        "startOffsets": "55,173,237,304,368,484,610,736,864,1036",
-                        "endLines": "2,3,4,5,6,7,8,9,12,17",
-                        "endColumns": "117,63,66,63,115,125,125,127,12,12",
-                        "endOffsets": "168,232,299,363,479,605,731,859,1031,1383"
-                    },
-                    "to": {
-                        "startLines": "2,3,4,5,6,7,8,9,18,21",
-                        "startColumns": "4,4,4,4,4,4,4,4,4,4",
-                        "startOffsets": "55,173,237,304,368,484,610,736,1357,1529",
-                        "endLines": "2,3,4,5,6,7,8,9,20,25",
-                        "endColumns": "117,63,66,63,115,125,125,127,12,12",
-                        "endOffsets": "168,232,299,363,479,605,731,859,1524,1876"
-                    }
-                },
-                {
-                    "source": "/home/gaga/.gradle/caches/8.14/transforms/53af3df53a14c35a9e3f5f2fbe57abbb/transformed/credentials-play-services-auth-1.2.0-rc01/res/values-v21/values-v21.xml",
+                    "source": "C:\\Users\\stefa\\.gradle\\caches\\8.14\\transforms\\730aa89aa37285f9c7a25fa229bb9c4e\\transformed\\credentials-play-services-auth-1.2.0-rc01\\res\\values-v21\\values-v21.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",
@@ -39,6 +20,25 @@
                         "endLines": "17",
                         "endColumns": "12",
                         "endOffsets": "1352"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\stefa\\.gradle\\caches\\8.14\\transforms\\565c037c0f5624f8c9f619a1be3c55e5\\transformed\\core-1.13.1\\res\\values-v21\\values-v21.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10,13",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,173,237,304,368,484,610,736,864,1036",
+                        "endLines": "2,3,4,5,6,7,8,9,12,17",
+                        "endColumns": "117,63,66,63,115,125,125,127,12,12",
+                        "endOffsets": "168,232,299,363,479,605,731,859,1031,1383"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5,6,7,8,9,18,21",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,173,237,304,368,484,610,736,1357,1529",
+                        "endLines": "2,3,4,5,6,7,8,9,20,25",
+                        "endColumns": "117,63,66,63,115,125,125,127,12,12",
+                        "endOffsets": "168,232,299,363,479,605,731,859,1524,1876"
                     }
                 }
             ]
