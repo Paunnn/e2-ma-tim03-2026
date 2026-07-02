@@ -135,6 +135,20 @@ class FriendRepository {
         }
     }
 
+    // uid -> position on the current monthly leaderboard. Matches the leaderboard
+    // rules: only players with monthlyStars > 0 are ranked this cycle.
+    suspend fun getMonthlyRanks(): Map<String, Int> {
+        val snap = users.get().await()
+        return snap.documents
+            .mapNotNull { doc ->
+                val ms = (doc.getLong("monthlyStars") ?: 0L).toInt()
+                if (ms > 0) doc.id to ms else null
+            }
+            .sortedByDescending { it.second }
+            .mapIndexed { i, (uid, _) -> uid to i + 1 }
+            .toMap()
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun parseFriendInfo(uid: String, data: Map<String, Any>?): FriendInfo? {
         if (data == null) return null

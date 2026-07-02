@@ -17,5 +17,7 @@ data class FriendInfo(
     val league: Int = 0,
     val avatarIndex: Int = 0,
     val monthlyStars: Int = 0,
+    // Position on the current monthly leaderboard; 0 = not ranked (no stars this cycle).
+    val monthlyRank: Int = 0,
     val region: String = ""
 )

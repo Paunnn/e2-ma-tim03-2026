@@ -47,6 +47,17 @@ class FriendsViewModel(
 
         friendsListener = repo.listenToFriendsList { list ->
             _uiState.value = _uiState.value.copy(friends = list)
+            // Enrich with the current monthly leaderboard position (spec 7c).
+            viewModelScope.launch {
+                runCatching {
+                    val ranks = repo.getMonthlyRanks()
+                    _uiState.value = _uiState.value.copy(
+                        friends = _uiState.value.friends.map { f ->
+                            f.copy(monthlyRank = ranks[f.uid] ?: 0)
+                        }
+                    )
+                }
+            }
         }
         requestsListener = repo.listenToPendingRequests { list ->
             _uiState.value = _uiState.value.copy(pendingRequests = list)

@@ -28,35 +28,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.data.model.User
 import com.tim03.slagalica.ui.components.MozaikBottomNav
+import com.tim03.slagalica.ui.components.avatarIcons
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.util.QrCodeUtils
+import com.tim03.slagalica.util.leagueIcon
+import com.tim03.slagalica.util.leagueName
 import com.tim03.slagalica.viewmodel.ProfileViewModel
 
-private val avatarIcons = listOf(
-    Icons.Default.Person,
-    Icons.Default.Face,
-    Icons.Default.SportsEsports,
-    Icons.Default.Star,
-    Icons.Default.EmojiEvents,
-    Icons.Default.Psychology
-)
-
-private fun leagueName(league: Int) = when (league) {
-    0 -> "Bronza"
-    1 -> "Srebro"
-    2 -> "Zlato"
-    3 -> "Dijamant"
-    4 -> "Majstor"
-    else -> "Liga $league"
-}
-
+// Colors follow the canonical league order: 0 Početnik, 1 Bronza, 2 Srebro,
+// 3 Zlato, 4 Platina, 5 Dijamant (names/icons come from util/LeagueUtils).
 private fun leagueColor(league: Int) = when (league) {
-    0 -> Color(0xFFCD7F32)
-    1 -> Color(0xFFC0C0C0)
-    2 -> Color(0xFFFFc857)
-    3 -> Color(0xFF4F7CFF)
+    0 -> Color(0xFF8BC34A)
+    1 -> Color(0xFFCD7F32)
+    2 -> Color(0xFFC0C0C0)
+    3 -> Color(0xFFFFc857)
     4 -> Color(0xFFC599FF)
-    else -> Color(0xFFFFc857)
+    else -> Color(0xFF4FC3F7)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -230,7 +217,7 @@ private fun ProfileHeaderSection(
                 }
                 InfoChip(
                     icon = Icons.Default.EmojiEvents,
-                    label = leagueName(user?.league ?: 0),
+                    label = "${leagueIcon(user?.league ?: 0)} ${leagueName(user?.league ?: 0)}",
                     color = leagueColor(user?.league ?: 0)
                 )
             }

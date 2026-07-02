@@ -29,7 +29,10 @@ import com.google.zxing.integration.android.IntentIntegrator
 import com.tim03.slagalica.data.model.FriendInfo
 import com.tim03.slagalica.data.model.Friendship
 import com.tim03.slagalica.ui.components.MozaikBottomNav
+import com.tim03.slagalica.ui.components.avatarIcons
 import com.tim03.slagalica.ui.theme.*
+import com.tim03.slagalica.util.leagueIcon
+import com.tim03.slagalica.util.leagueName
 import com.tim03.slagalica.viewmodel.FriendsTab
 import com.tim03.slagalica.viewmodel.FriendsViewModel
 
@@ -188,7 +191,9 @@ private fun FriendCard(friend: FriendInfo, onRemove: () -> Unit, onInvite: () ->
                 modifier = Modifier.size(44.dp).clip(CircleShape).background(NavyCardLight),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Person, contentDescription = null, tint = LightGray, modifier = Modifier.size(24.dp))
+                // Friend's actual profile picture (same avatar set as on the profile page).
+                val iconIndex = friend.avatarIndex.coerceIn(0, avatarIcons.size - 1)
+                Icon(avatarIcons[iconIndex], contentDescription = null, tint = LightGray, modifier = Modifier.size(24.dp))
             }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -199,13 +204,19 @@ private fun FriendCard(friend: FriendInfo, onRemove: () -> Unit, onInvite: () ->
                         Text(" ${friend.stars}", color = Gold, fontSize = 12.sp)
                     }
                     Text("•", color = MediumGray, fontSize = 12.sp)
-                    Text("Liga ${friend.league}", color = LightGray, fontSize = 12.sp)
+                    Text("${leagueIcon(friend.league)} ${leagueName(friend.league)}", color = LightGray, fontSize = 12.sp)
                     if (friend.region.isNotBlank()) {
                         Text("•", color = MediumGray, fontSize = 12.sp)
                         Text(friend.region, color = MediumGray, fontSize = 11.sp)
                     }
                 }
-                Text("Mesečni rang: ${friend.monthlyStars}★", color = MediumGray, fontSize = 11.sp)
+                // Position on the current monthly leaderboard, not the star count -
+                // players without stars this cycle are not ranked yet.
+                Text(
+                    if (friend.monthlyRank > 0) "Mesečni rang: #${friend.monthlyRank}"
+                    else "Mesečni rang: nerangiran",
+                    color = MediumGray, fontSize = 11.sp
+                )
             }
             Spacer(Modifier.width(4.dp))
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -318,7 +329,7 @@ private fun SearchTab(
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(searchResult.username, color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("${searchResult.stars}★ • Liga ${searchResult.league}", color = LightGray, fontSize = 12.sp)
+                        Text("${searchResult.stars}★ • ${leagueIcon(searchResult.league)} ${leagueName(searchResult.league)}", color = LightGray, fontSize = 12.sp)
                     }
                     if (requestSent) {
                         Text("Poslato ✓", color = SuccessGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
