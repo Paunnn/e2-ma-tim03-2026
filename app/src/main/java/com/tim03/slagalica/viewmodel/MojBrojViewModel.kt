@@ -61,6 +61,7 @@ class MojBrojViewModel @JvmOverloads constructor(
     private val sessionId: String = "",
     private val isPlayer1: Boolean = true,
     private val gameIdx: Int = -1,
+    private val izazovMode: Boolean = false,
     private val userRepo: UserRepository = UserRepository(),
     private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
     private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository()
@@ -583,9 +584,15 @@ class MojBrojViewModel @JvmOverloads constructor(
         if (isMultiplayer) {
             submitRoundMultiplayer(state, myResult)
         } else {
-            val opponentResult = simulateOpponentResult(target, state.availableNumbers)
+            // Izazov: fully solo - no simulated opponent, only exact hits score.
+            val opponentResult = if (izazovMode) null else simulateOpponentResult(target, state.availableNumbers)
             val userIsRoundStarter = state.currentRound == 1
-            val (myPoints, opponentPoints, message) = scoreRound(target, myResult, opponentResult, userIsRoundStarter)
+            val (myPoints, opponentPoints, message) = if (izazovMode) {
+                if (myResult == target) Triple(10, 0, "Pogodio si traženi broj! +10")
+                else Triple(0, 0, "Nisi pogodio tačan broj.")
+            } else {
+                scoreRound(target, myResult, opponentResult, userIsRoundStarter)
+            }
 
             _uiState.value = state.copy(
                 phase = MojBrojPhase.SUBMITTED,
@@ -596,7 +603,8 @@ class MojBrojViewModel @JvmOverloads constructor(
                 roundResultMessage = message
             )
 
-            if (state.currentRound < 2) {
+            // Izazov: fully solo, one round only (spec 9d - every game appears once).
+            if (state.currentRound < 2 && !izazovMode) {
                 viewModelScope.launch { delay(2500L); startRound(2) }
             } else {
                 val finalMyScore = _uiState.value.myScore
@@ -731,9 +739,10 @@ class MojBrojViewModelFactory(
     private val application: Application,
     private val sessionId: String,
     private val isPlayer1: Boolean,
-    private val gameIdx: Int
+    private val gameIdx: Int,
+    private val izazovMode: Boolean = false
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        MojBrojViewModel(application, sessionId, isPlayer1, gameIdx) as T
+        MojBrojViewModel(application, sessionId, isPlayer1, gameIdx, izazovMode) as T
 }

@@ -60,7 +60,9 @@ class RegionRepository {
                 region = region,
                 icon = icon,
                 totalMonthlyStars = users.sumOf { it.monthlyStars }.toLong(),
-                activePlayers = users.count { it.monthlyStars > 0 },
+                // Every registered account in the region counts as an active player;
+                // filtering by monthlyStars > 0 hid users who hadn't scored this month yet.
+                activePlayers = users.size,
                 totalPlayers = users.size
             )
         }.sortedByDescending { it.totalMonthlyStars }

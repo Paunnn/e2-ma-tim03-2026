@@ -37,6 +37,7 @@ class KoZnaZnaViewModel(
     private val sessionId: String = "",
     private val isPlayer1: Boolean = true,
     private val gameIdx: Int = -1,
+    private val izazovMode: Boolean = false,
     private val questionRepo: KoZnaZnaRepository = KoZnaZnaRepository(),
     private val userRepo: UserRepository = UserRepository(),
     private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
@@ -187,7 +188,8 @@ class KoZnaZnaViewModel(
             opponentAnswerTimeMs = null,
             revealPhase = false
         )
-        if (!isMultiplayer) startOpponentTimer()
+        // Izazov mode is fully solo - no simulated opponent answers.
+        if (!isMultiplayer && !izazovMode) startOpponentTimer()
         startQuestionTimer()
     }
 
@@ -256,6 +258,8 @@ class KoZnaZnaViewModel(
         }
         // Check if opponent has already answered
         if (_uiState.value.opponentAnswerIndex != null) triggerReveal()
+        // Solo izazov: nobody else answers, reveal right away.
+        else if (izazovMode) triggerReveal()
     }
 
     private fun triggerReveal() {
@@ -362,9 +366,10 @@ class KoZnaZnaViewModel(
 class KoZnaZnaViewModelFactory(
     private val sessionId: String,
     private val isPlayer1: Boolean,
-    private val gameIdx: Int
+    private val gameIdx: Int,
+    private val izazovMode: Boolean = false
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        KoZnaZnaViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx) as T
+        KoZnaZnaViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx, izazovMode = izazovMode) as T
 }

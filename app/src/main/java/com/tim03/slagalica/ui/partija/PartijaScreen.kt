@@ -2,6 +2,7 @@ package com.tim03.slagalica.ui.partija
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
@@ -24,11 +25,13 @@ import com.tim03.slagalica.viewmodel.PartijaViewModelFactory
 fun PartijaScreen(
     sessionId: String = "",
     isPlayer1: Boolean = true,
+    izazovId: String = "",
     onExit: () -> Unit,
-    viewModel: PartijaViewModel = viewModel(factory = PartijaViewModelFactory(sessionId, isPlayer1))
+    viewModel: PartijaViewModel = viewModel(factory = PartijaViewModelFactory(sessionId, isPlayer1, izazovId = izazovId))
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showForfeitDialog by remember { mutableStateOf(false) }
+    val izazovMode = izazovId.isNotEmpty()
 
     if (showForfeitDialog) {
         ForfeitDialog(
@@ -43,22 +46,26 @@ fun PartijaScreen(
     if (state.isComplete) {
         LaunchedEffect(Unit) { viewModel.saveResult() }
         Box(modifier = Modifier.fillMaxSize().background(Navy)) {
-            val forfeitMessage = when {
-                state.forfeitLoss -> "Odustali ste od partije"
-                state.forfeitWon -> "Protivnik je odustao od partije"
-                else -> null
-            }
-            GameOverContent(
-                myScore = state.myTotal,
-                opponentScore = state.oppTotal,
-                onFinish = onExit,
-                forfeitMessage = forfeitMessage,
-                wonOverride = when {
-                    state.forfeitWon -> true
-                    state.forfeitLoss -> false
+            if (izazovMode) {
+                IzazovPartijaOverContent(total = state.myTotal, onFinish = onExit)
+            } else {
+                val forfeitMessage = when {
+                    state.forfeitLoss -> "Odustali ste od partije"
+                    state.forfeitWon -> "Protivnik je odustao od partije"
                     else -> null
                 }
-            )
+                GameOverContent(
+                    myScore = state.myTotal,
+                    opponentScore = state.oppTotal,
+                    onFinish = onExit,
+                    forfeitMessage = forfeitMessage,
+                    wonOverride = when {
+                        state.forfeitWon -> true
+                        state.forfeitLoss -> false
+                        else -> null
+                    }
+                )
+            }
         }
         return
     }
@@ -94,6 +101,7 @@ fun PartijaScreen(
             sessionId = mpSessionId,
             isPlayer1 = mpIsPlayer1,
             gameIdx = gameIdx,
+            izazovMode = izazovMode,
             oppName = oppName
         )
         PartijaGame.SPOJNICE -> SpojniceScreen(
@@ -105,6 +113,7 @@ fun PartijaScreen(
             sessionId = mpSessionId,
             isPlayer1 = mpIsPlayer1,
             gameIdx = gameIdx,
+            izazovMode = izazovMode,
             oppName = oppName
         )
         PartijaGame.MOJ_BROJ -> MojBrojScreen(
@@ -116,6 +125,7 @@ fun PartijaScreen(
             sessionId = mpSessionId,
             isPlayer1 = mpIsPlayer1,
             gameIdx = gameIdx,
+            izazovMode = izazovMode,
             oppName = oppName
         )
         PartijaGame.KORAK_PO_KORAK -> KorakPoKorakScreen(
@@ -127,6 +137,7 @@ fun PartijaScreen(
             sessionId = mpSessionId,
             isPlayer1 = mpIsPlayer1,
             gameIdx = gameIdx,
+            izazovMode = izazovMode,
             oppName = oppName
         )
         PartijaGame.ASOCIJACIJE -> AsocijacijeScreen(
@@ -138,6 +149,7 @@ fun PartijaScreen(
             sessionId = mpSessionId,
             isPlayer1 = mpIsPlayer1,
             gameIdx = gameIdx,
+            izazovMode = izazovMode,
             oppName = oppName
         )
         PartijaGame.SKOCKO -> SkockoScreen(
@@ -149,8 +161,40 @@ fun PartijaScreen(
             sessionId = mpSessionId,
             isPlayer1 = mpIsPlayer1,
             gameIdx = gameIdx,
+            izazovMode = izazovMode,
             oppName = oppName
         )
+    }
+}
+
+// End screen for a solo izazov partija - no opponent, just the achieved total.
+@Composable
+private fun IzazovPartijaOverContent(total: Int, onFinish: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text("⚔", fontSize = 56.sp)
+        Spacer(Modifier.height(16.dp))
+        Text("Izazov završen!", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 26.sp)
+        Spacer(Modifier.height(20.dp))
+        Text("$total", color = Gold, fontWeight = FontWeight.ExtraBold, fontSize = 52.sp)
+        Text("bodova", color = LightGray, fontSize = 14.sp)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Rezultat je poslat. Pobednik se određuje kada svi učesnici odigraju.",
+            color = MediumGray, fontSize = 13.sp, textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(36.dp))
+        Button(
+            onClick = onFinish,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright)
+        ) {
+            Text("NAZAD NA IZAZOVE", fontWeight = FontWeight.ExtraBold, color = White, fontSize = 15.sp)
+        }
     }
 }
 

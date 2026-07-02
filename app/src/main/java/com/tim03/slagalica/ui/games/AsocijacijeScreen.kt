@@ -45,10 +45,11 @@ fun AsocijacijeScreen(
     sessionId: String = "",
     isPlayer1: Boolean = true,
     gameIdx: Int = -1,
+    izazovMode: Boolean = false,
     oppName: String = "Protivnik"
 ) {
     val viewModel: AsocijacijeViewModel = viewModel(
-        factory = AsocijacijeViewModelFactory(sessionId, isPlayer1, gameIdx)
+        factory = AsocijacijeViewModelFactory(sessionId, isPlayer1, gameIdx, izazovMode)
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -81,12 +82,13 @@ fun AsocijacijeScreen(
                 gameName = "Asocijacije",
                 gameColor = GameAsocijacije,
                 gameIcon = "✦",
-                round = "${state.currentRound}/2 runda",
+                round = if (izazovMode) "1/1 runda" else "${state.currentRound}/2 runda",
                 timeLeft = state.timeLeft,
                 totalTime = 120,
                 myScore = state.myScore + myScoreOffset,
                 oppScore = state.opponentScore + oppScoreOffset,
                 oppName = oppName,
+                showOpponent = !izazovMode,
                 onExit = onExitClick
             )
         }

@@ -12,22 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-enum class IzazovPhase { LIST, CREATING, PLAYING, RESULTS }
-
-data class IzazovQuestion(val question: String, val options: List<String>, val correctIndex: Int)
-
-private val QUESTIONS = listOf(
-    IzazovQuestion("Koji grad je prestonica Srbije?", listOf("Novi Sad", "Beograd", "Niš", "Kragujevac"), 1),
-    IzazovQuestion("Koliko sati ima jedan dan?", listOf("12", "18", "24", "48"), 2),
-    IzazovQuestion("Koji broj je prost?", listOf("15", "16", "17", "18"), 2),
-    IzazovQuestion("Koliko strana ima kocka?", listOf("4", "6", "8", "12"), 1),
-    IzazovQuestion("Koliko meseci ima u godini?", listOf("10", "11", "12", "13"), 2),
-    IzazovQuestion("Ko je napisao roman 'Na Drini ćuprija'?", listOf("Ivo Andrić", "Meša Selimović", "Dobrica Ćosić", "Branko Ćopić"), 0),
-    IzazovQuestion("Koliko igrača ima fudbalski tim na terenu?", listOf("9", "10", "11", "12"), 2),
-    IzazovQuestion("Koji je hemijski simbol zlata?", listOf("Zl", "Gl", "Au", "Ag"), 2),
-    IzazovQuestion("Koliko stepeni ima pravi ugao?", listOf("45", "60", "90", "180"), 2),
-    IzazovQuestion("Koji kontinent je najveći?", listOf("Amerika", "Afrika", "Azija", "Evropa"), 2),
-)
+enum class IzazovPhase { LIST, CREATING, RESULTS }
 
 data class IzazovUiState(
     val phase: IzazovPhase = IzazovPhase.LIST,
@@ -36,11 +21,9 @@ data class IzazovUiState(
     val activeIzazovId: String = "",
     val createBidStars: Int = 0,
     val createBidTokens: Int = 0,
-    val gameQuestions: List<IzazovQuestion> = emptyList(),
-    val currentQuestionIndex: Int = 0,
-    val selectedAnswer: Int = -1,
-    val gameScore: Int = 0,
-    val gameComplete: Boolean = false,
+    // One-shot navigation event: when set, the screen navigates to the solo partija
+    // for this izazov (spec 9d - every game appears once) and clears it.
+    val playIzazovId: String? = null,
     val myUid: String = "",
     val myRegion: String = "",
     val myTokens: Int = 0,
@@ -82,10 +65,22 @@ class IzazovViewModel(
     }
 
     private fun startListeningToOpenSessions(region: String = _uiState.value.myRegion) {
+        val uid = _uiState.value.myUid.ifEmpty { auth.currentUser?.uid ?: "" }
         listListener?.remove()
-        listListener = repo.listenToOpenSessions(region) { sessions ->
+        listListener = repo.listenToOpenSessions(region, uid) { sessions ->
             _uiState.value = _uiState.value.copy(openSessions = sessions)
+            // Any client that notices an expired challenge settles it; the repository's
+            // transaction guard ensures only one of them actually pays out.
+            sessions.filter { it.status == "open" && it.isExpired() }.forEach { expired ->
+                viewModelScope.launch { runCatching { repo.finalize(expired.id) } }
+            }
         }
+    }
+
+    // Poster closes the challenge early: with 2+ players who all played it pays out,
+    // alone it cancels and refunds the stake.
+    fun finalizeEarly(session: IzazovSession) {
+        viewModelScope.launch { runCatching { repo.finalize(session.id, byPosterEarly = true) } }
     }
 
     fun setBidStars(value: Int) {
@@ -100,12 +95,20 @@ class IzazovViewModel(
         val uid = auth.currentUser?.uid ?: return
         val s = _uiState.value
         if (s.createBidStars == 0 && s.createBidTokens == 0) return
+        _uiState.value = s.copy(phase = IzazovPhase.CREATING)
         viewModelScope.launch {
             runCatching {
                 val user = userRepo.getCurrentUser() ?: return@runCatching
                 if (user.stars < s.createBidStars || user.tokens < s.createBidTokens) return@runCatching
-                val izazovId = repo.createIzazov(uid, user.username, s.myRegion, s.createBidStars, s.createBidTokens)
-                startGame(izazovId, s.createBidStars, s.createBidTokens)
+                val region = user.region.ifEmpty { "Srbija" }
+                val izazovId = repo.createIzazov(uid, user.username, region, s.createBidStars, s.createBidTokens)
+                _uiState.value = _uiState.value.copy(
+                    phase = IzazovPhase.LIST,
+                    playIzazovId = izazovId,
+                    myUid = uid
+                )
+            }.onFailure {
+                _uiState.value = _uiState.value.copy(phase = IzazovPhase.LIST)
             }
         }
     }
@@ -118,13 +121,19 @@ class IzazovViewModel(
                 val user = userRepo.getCurrentUser() ?: return@runCatching
                 if (user.stars < session.bidStars || user.tokens < session.bidTokens) return@runCatching
                 repo.joinIzazov(session.id, uid, user.username, session.bidStars, session.bidTokens)
-                startGame(session.id, session.bidStars, session.bidTokens)
+                _uiState.value = _uiState.value.copy(playIzazovId = session.id, myUid = uid)
             }
         }
     }
 
     fun playExisting(session: IzazovSession) {
-        startGame(session.id, session.bidStars, session.bidTokens)
+        val uid = auth.currentUser?.uid ?: return
+        _uiState.value = _uiState.value.copy(playIzazovId = session.id, myUid = uid)
+    }
+
+    // Called by the screen once it has handled the navigation event.
+    fun consumePlayEvent() {
+        _uiState.value = _uiState.value.copy(playIzazovId = null)
     }
 
     fun viewResults(session: IzazovSession) {
@@ -141,64 +150,20 @@ class IzazovViewModel(
         )
     }
 
-    private fun startGame(izazovId: String, bidStars: Int, bidTokens: Int) {
-        val uid = auth.currentUser?.uid ?: return
-        val shuffled = QUESTIONS.shuffled().take(5)
-        _uiState.value = _uiState.value.copy(
-            phase = IzazovPhase.PLAYING,
-            activeIzazovId = izazovId,
-            gameQuestions = shuffled,
-            currentQuestionIndex = 0,
-            selectedAnswer = -1,
-            gameScore = 0,
-            gameComplete = false,
-            myUid = uid
-        )
-    }
-
-    fun selectAnswer(answerIndex: Int) {
-        val s = _uiState.value
-        if (s.selectedAnswer != -1) return
-        val question = s.gameQuestions.getOrNull(s.currentQuestionIndex) ?: return
-        val correct = answerIndex == question.correctIndex
-        val newScore = s.gameScore + if (correct) 10 else 0
-        _uiState.value = s.copy(selectedAnswer = answerIndex, gameScore = newScore)
-    }
-
-    fun nextQuestion() {
-        val s = _uiState.value
-        val next = s.currentQuestionIndex + 1
-        if (next >= s.gameQuestions.size) {
-            // Game done
-            _uiState.value = s.copy(gameComplete = true, currentQuestionIndex = next, selectedAnswer = -1)
-            viewModelScope.launch {
-                runCatching {
-                    repo.submitScore(s.activeIzazovId, s.myUid, s.gameScore)
-                    // Reload session for results
-                    sessionListener?.remove()
-                    sessionListener = repo.listenToSession(s.activeIzazovId) { updated ->
-                        _uiState.value = _uiState.value.copy(activeSession = updated)
-                    }
-                    _uiState.value = _uiState.value.copy(phase = IzazovPhase.RESULTS)
-                    loadUser()
-                }
-            }
-        } else {
-            _uiState.value = s.copy(currentQuestionIndex = next, selectedAnswer = -1)
-        }
-    }
-
     fun backToList() {
-        listListener?.remove()
-        listListener = null
         sessionListener?.remove()
         sessionListener = null
-        val region = _uiState.value.myRegion
-        val uid = _uiState.value.myUid
-        val tokens = _uiState.value.myTokens
-        val stars = _uiState.value.myStars
-        _uiState.value = IzazovUiState(myUid = uid, myRegion = region, myTokens = tokens, myStars = stars)
-        startListeningToOpenSessions(region)
+        _uiState.value = _uiState.value.copy(
+            phase = IzazovPhase.LIST,
+            activeSession = null,
+            activeIzazovId = ""
+        )
+        loadUser()
+    }
+
+    // Called when the screen comes back into focus (e.g. returning from the partija)
+    // so the balance and session list reflect the just-submitted score.
+    fun refresh() {
         loadUser()
     }
 

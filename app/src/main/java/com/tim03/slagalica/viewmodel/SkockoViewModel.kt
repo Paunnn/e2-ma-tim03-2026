@@ -49,6 +49,7 @@ class SkockoViewModel(
     private val sessionId: String = "",
     private val isPlayer1: Boolean = true,
     private val gameIdx: Int = -1,
+    private val izazovMode: Boolean = false,
     private val userRepo: UserRepository = UserRepository(),
     private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
     private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository()
@@ -541,13 +542,21 @@ class SkockoViewModel(
                     }
                 }
             } else {
-                viewModelScope.launch { startRound2() }
+                viewModelScope.launch {
+                    if (izazovMode) {
+                        // Izazov: fully solo, one round only (spec 9d - every game appears once).
+                        _uiState.value = _uiState.value.copy(revealedSolution = sol)
+                        delay(1500L); endGame()
+                    } else {
+                        startRound2()
+                    }
+                }
             }
         } else if (newAttempts.size >= 6) {
             timerJob?.cancel()
             _uiState.value = state.copy(
                 myAttempts = newAttempts, currentInput = emptyList(),
-                message = "Nisi pogodio/la. Protivnik dobija šansu!"
+                message = if (izazovMode) "Nisi pogodio/la." else "Nisi pogodio/la. Protivnik dobija šansu!"
             )
             if (isMultiplayer) {
                 val round = state.currentRound
@@ -630,6 +639,14 @@ class SkockoViewModel(
 
     private fun startOpponentBonusR1() {
         timerJob?.cancel(); opponentJob?.cancel()
+        // Izazov: fully solo, one round only - no bonus phase, reveal and finish.
+        if (izazovMode) {
+            _uiState.value = _uiState.value.copy(
+                revealedSolution = _uiState.value.mySolution, showSolution = true
+            )
+            viewModelScope.launch { delay(2000L); endGame() }
+            return
+        }
         _uiState.value = _uiState.value.copy(
             phase = SkockoPhase.OPPONENT_BONUS_R1, timeLeft = 10, currentInput = emptyList(),
             message = "Protivnik ima 10 sekundi za bonus!"
@@ -750,9 +767,10 @@ class SkockoViewModel(
 class SkockoViewModelFactory(
     private val sessionId: String,
     private val isPlayer1: Boolean,
-    private val gameIdx: Int
+    private val gameIdx: Int,
+    private val izazovMode: Boolean = false
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        SkockoViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx) as T
+        SkockoViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx, izazovMode = izazovMode) as T
 }

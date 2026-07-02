@@ -51,10 +51,11 @@ fun SkockoScreen(
     sessionId: String = "",
     isPlayer1: Boolean = true,
     gameIdx: Int = -1,
+    izazovMode: Boolean = false,
     oppName: String = "Protivnik"
 ) {
     val viewModel: SkockoViewModel = viewModel(
-        factory = SkockoViewModelFactory(sessionId, isPlayer1, gameIdx)
+        factory = SkockoViewModelFactory(sessionId, isPlayer1, gameIdx, izazovMode)
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -88,6 +89,7 @@ fun SkockoScreen(
                 myScore = state.myScore + myScoreOffset,
                 oppScore = state.opponentScore + oppScoreOffset,
                 oppName = oppName,
+                showOpponent = !izazovMode,
                 onExit = onExitClick
             )
         }
@@ -142,9 +144,9 @@ fun SkockoScreen(
                 }
 
                 // Attempts display
-                val showingOpponentAttempts = state.phase == SkockoPhase.WAITING_OPPONENT ||
+                val showingOpponentAttempts = !izazovMode && (state.phase == SkockoPhase.WAITING_OPPONENT ||
                     state.phase == SkockoPhase.MY_BONUS ||
-                    state.phase == SkockoPhase.GAME_OVER
+                    state.phase == SkockoPhase.GAME_OVER)
                 val attemptsToShow = if (showingOpponentAttempts) state.opponentAttempts else state.myAttempts
 
                 val currentInputForDisplay = when {
@@ -154,6 +156,7 @@ fun SkockoScreen(
 
                 Text(
                     text = when {
+                        izazovMode -> "Pokušaji"
                         !showingOpponentAttempts -> "Pokušaji (Runda ${state.currentRound})"
                         state.currentRound == 1 -> "Pokušaji protivnika (Runda 1)"
                         else -> "Pokušaji protivnika (Runda 2)"

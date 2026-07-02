@@ -35,7 +35,6 @@ import com.tim03.slagalica.data.repository.RegionStats
 import com.tim03.slagalica.ui.components.MozaikBottomNav
 import com.tim03.slagalica.ui.izazov.CreateIzazovDialog
 import com.tim03.slagalica.ui.izazov.IzazovCard
-import com.tim03.slagalica.ui.izazov.IzazovGameScreen
 import com.tim03.slagalica.ui.izazov.IzazovResultsScreen
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.IzazovPhase
@@ -147,6 +146,7 @@ fun RegionScreen(
     onLeaderboardClick: () -> Unit = {},
     onFriendsClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
+    onPlayIzazov: (String) -> Unit = {},
     vm: RegionViewModel = viewModel(),
     izazovVm: IzazovViewModel = viewModel()
 ) {
@@ -154,6 +154,17 @@ fun RegionScreen(
     val izazovState by izazovVm.uiState.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableStateOf(0) }
     var showCreateDialog by remember { mutableStateOf(false) }
+
+    // Refresh balance/list when (re-)entering, e.g. coming back from the izazov partija.
+    LaunchedEffect(Unit) { izazovVm.refresh() }
+
+    // One-shot navigation into the solo partija for this izazov.
+    LaunchedEffect(izazovState.playIzazovId) {
+        izazovState.playIzazovId?.let { id ->
+            izazovVm.consumePlayEvent()
+            onPlayIzazov(id)
+        }
+    }
 
     if (showCreateDialog) {
         CreateIzazovDialog(
@@ -168,20 +179,8 @@ fun RegionScreen(
         )
     }
 
-    // Game / results take over the full screen
+    // Results take over the full screen
     when (izazovState.phase) {
-        IzazovPhase.PLAYING -> {
-            IzazovGameScreen(
-                questions = izazovState.gameQuestions,
-                currentIndex = izazovState.currentQuestionIndex,
-                selectedAnswer = izazovState.selectedAnswer,
-                score = izazovState.gameScore,
-                gameComplete = izazovState.gameComplete,
-                onSelectAnswer = izazovVm::selectAnswer,
-                onNext = izazovVm::nextQuestion
-            )
-            return
-        }
         IzazovPhase.RESULTS -> {
             IzazovResultsScreen(
                 session = izazovState.activeSession,
@@ -331,7 +330,8 @@ fun RegionScreen(
                                 myUid = izazovState.myUid,
                                 onJoin = { izazovVm.joinIzazov(session) },
                                 onPlay = { izazovVm.playExisting(session) },
-                                onViewResults = { izazovVm.viewResults(session) }
+                                onViewResults = { izazovVm.viewResults(session) },
+                                onFinalizeEarly = { izazovVm.finalizeEarly(session) }
                             )
                         }
                     }

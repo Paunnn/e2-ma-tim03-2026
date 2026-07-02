@@ -47,11 +47,12 @@ fun MojBrojScreen(
     sessionId: String = "",
     isPlayer1: Boolean = true,
     gameIdx: Int = -1,
+    izazovMode: Boolean = false,
     oppName: String = "Protivnik"
 ) {
     val application = LocalContext.current.applicationContext as Application
     val viewModel: MojBrojViewModel = viewModel(
-        factory = MojBrojViewModelFactory(application, sessionId, isPlayer1, gameIdx)
+        factory = MojBrojViewModelFactory(application, sessionId, isPlayer1, gameIdx, izazovMode)
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val username by viewModel.username.collectAsStateWithLifecycle()
@@ -79,13 +80,14 @@ fun MojBrojScreen(
                     gameName = "Moj broj",
                     gameColor = GameMojBroj,
                     gameIcon = "#",
-                    round = "${state.currentRound}/2 runda",
+                    round = if (izazovMode) "1/1 runda" else "${state.currentRound}/2 runda",
                     timeLeft = state.timeLeft,
                     totalTime = 60,
                     myScore = state.myScore + myScoreOffset,
                     oppScore = state.opponentScore + oppScoreOffset,
                     myName = username,
                     oppName = oppName,
+                    showOpponent = !izazovMode,
                     onExit = onExitClick
                 )
             }
@@ -166,13 +168,15 @@ fun MojBrojScreen(
                                                 fontWeight = FontWeight.Bold, fontSize = 18.sp
                                             )
                                         }
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(oppName, color = MediumGray, style = MaterialTheme.typography.labelSmall)
-                                            Text(
-                                                "${state.opponentRoundResult ?: "—"}",
-                                                color = if (state.opponentRoundResult == state.targetNumber) SuccessGreen else LightGray,
-                                                fontWeight = FontWeight.Bold, fontSize = 18.sp
-                                            )
+                                        if (!izazovMode) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text(oppName, color = MediumGray, style = MaterialTheme.typography.labelSmall)
+                                                Text(
+                                                    "${state.opponentRoundResult ?: "—"}",
+                                                    color = if (state.opponentRoundResult == state.targetNumber) SuccessGreen else LightGray,
+                                                    fontWeight = FontWeight.Bold, fontSize = 18.sp
+                                                )
+                                            }
                                         }
                                     }
                                 }

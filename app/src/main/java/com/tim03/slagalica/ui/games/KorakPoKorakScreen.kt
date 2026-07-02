@@ -43,10 +43,11 @@ fun KorakPoKorakScreen(
     sessionId: String = "",
     isPlayer1: Boolean = true,
     gameIdx: Int = -1,
+    izazovMode: Boolean = false,
     oppName: String = "Protivnik"
 ) {
     val viewModel: KorakPoKorakViewModel = viewModel(
-        factory = KorakPoKorakViewModelFactory(sessionId, isPlayer1, gameIdx)
+        factory = KorakPoKorakViewModelFactory(sessionId, isPlayer1, gameIdx, izazovMode)
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val username by viewModel.username.collectAsStateWithLifecycle()
@@ -73,13 +74,14 @@ fun KorakPoKorakScreen(
                     gameName = "Korak po korak",
                     gameColor = GameKorak,
                     gameIcon = "↦",
-                    round = "${state.currentRound}/2 runda",
+                    round = if (izazovMode) "1/1 runda" else "${state.currentRound}/2 runda",
                     timeLeft = state.timeLeft,
                     totalTime = totalTime,
                     myScore = state.myScore + myScoreOffset,
                     oppScore = state.opponentScore + oppScoreOffset,
                     myName = username,
                     oppName = oppName,
+                    showOpponent = !izazovMode,
                     onExit = onExitClick
                 )
             }

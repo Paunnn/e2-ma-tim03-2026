@@ -21,6 +21,9 @@ sealed class Screen(val route: String) {
     object Turnir : Screen("turnir")
     object Chat : Screen("chat")
     object Izazov : Screen("izazov")
+    object IzazovPartija : Screen("izazov_partija/{izazovId}") {
+        fun createRoute(izazovId: String) = "izazov_partija/$izazovId"
+    }
     object FriendlyMatchmaking : Screen("friendly_matchmaking")
     object Region : Screen("region")
     object Friends : Screen("friends")

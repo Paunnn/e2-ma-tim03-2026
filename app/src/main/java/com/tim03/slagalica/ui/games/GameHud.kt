@@ -42,6 +42,8 @@ fun GameHud(
     oppScore: Int,
     myName: String = "Igrač",
     oppName: String = "Protivnik",
+    // False in izazov mode - the challenge partija is played completely solo.
+    showOpponent: Boolean = true,
     onExit: () -> Unit = {}
 ) {
     val myInitials = myName.split("_", " ").filter { it.isNotBlank() }
@@ -124,37 +126,39 @@ fun GameHud(
                     }
                 }
 
-                Text("vs", color = MediumGray, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                if (showOpponent) {
+                    Text("vs", color = MediumGray, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
 
-                // Opponent — text left (right-aligned), avatar right
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Column(
+                    // Opponent — text left (right-aligned), avatar right
+                    Row(
                         modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.End
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            oppName, color = MediumGray, fontSize = 11.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            "$oppScore", color = Accent2,
-                            fontWeight = FontWeight.ExtraBold, fontSize = 16.sp
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(listOf(Accent2, Color(0xFF1A2150)))
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(oppInitials, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 8.sp)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            Text(
+                                oppName, color = MediumGray, fontSize = 11.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "$oppScore", color = Accent2,
+                                fontWeight = FontWeight.ExtraBold, fontSize = 16.sp
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.linearGradient(listOf(Accent2, Color(0xFF1A2150)))
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(oppInitials, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 8.sp)
+                        }
                     }
                 }
             }

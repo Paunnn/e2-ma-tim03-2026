@@ -165,7 +165,25 @@ fun AppNavigation(navController: NavHostController) {
         }
 
         composable(Screen.Izazov.route) {
-            IzazovScreen(onBack = { navController.popBackStack() })
+            IzazovScreen(
+                onBack = { navController.popBackStack() },
+                onPlayIzazov = { izazovId ->
+                    navController.navigate(Screen.IzazovPartija.createRoute(izazovId))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.IzazovPartija.route,
+            arguments = listOf(navArgument("izazovId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val izazovId = backStackEntry.arguments?.getString("izazovId") ?: ""
+            // Solo partija (no sessionId): every game plays once; total goes to the izazov.
+            PartijaScreen(
+                sessionId = "",
+                izazovId = izazovId,
+                onExit = { navController.popBackStack() }
+            )
         }
 
         composable(Screen.FriendlyMatchmaking.route) {
@@ -208,7 +226,10 @@ fun AppNavigation(navController: NavHostController) {
                 onHomeClick = { navController.navigate(Screen.Home.route) { launchSingleTop = true } },
                 onLeaderboardClick = { navController.navigate(Screen.Leaderboard.route) },
                 onFriendsClick = { navController.navigate(Screen.Friends.route) { launchSingleTop = true } },
-                onProfileClick = { navController.navigate(Screen.Profile.route) }
+                onProfileClick = { navController.navigate(Screen.Profile.route) },
+                onPlayIzazov = { izazovId ->
+                    navController.navigate(Screen.IzazovPartija.createRoute(izazovId))
+                }
             )
         }
 

@@ -49,6 +49,7 @@ class SpojniceViewModel(
     private val sessionId: String = "",
     private val isPlayer1: Boolean = true,
     private val gameIdx: Int = -1,
+    private val izazovMode: Boolean = false,
     private val roundRepo: SpojniceRepository = SpojniceRepository(),
     private val userRepo: UserRepository = UserRepository(),
     private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
@@ -548,6 +549,9 @@ class SpojniceViewModel(
 
         if (isMultiplayer) {
             finishMyMultiplayerTurn(state, round)
+        } else if (izazovMode) {
+            // Izazov: fully solo, one round only (spec 9d - every game appears once).
+            startPhase(SpojnicePhase.DONE, state.rounds)
         } else {
             val nextPhase = nextSpojnicePhase(state.phase, correctLocal.size >= round.leftItems.size)
             startPhase(nextPhase, state.rounds)
@@ -709,9 +713,10 @@ class SpojniceViewModel(
 class SpojniceViewModelFactory(
     private val sessionId: String,
     private val isPlayer1: Boolean,
-    private val gameIdx: Int
+    private val gameIdx: Int,
+    private val izazovMode: Boolean = false
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        SpojniceViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx) as T
+        SpojniceViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx, izazovMode = izazovMode) as T
 }

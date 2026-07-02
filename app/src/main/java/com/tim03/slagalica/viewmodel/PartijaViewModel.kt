@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.firestore.ListenerRegistration
 import com.tim03.slagalica.data.repository.DailyMissionsRepository
+import com.tim03.slagalica.data.repository.IzazovRepository
 import com.tim03.slagalica.data.repository.NotificationRepository
 import com.tim03.slagalica.data.repository.PartijaSessionRepository
 import com.tim03.slagalica.data.repository.TurnirRepository
@@ -36,11 +37,15 @@ class PartijaViewModel(
     val sessionId: String = "",
     val isPlayer1: Boolean = true,
     var isFriendly: Boolean = false,
+    // Non-empty when this is a solo partija played as an izazov entry (spec 9d):
+    // the final total is submitted as the izazov score instead of the usual rewards.
+    val izazovId: String = "",
     private val userRepo: UserRepository = UserRepository(),
     private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository(),
     private val missionRepo: DailyMissionsRepository = DailyMissionsRepository(),
     private val notifRepo: NotificationRepository = NotificationRepository(),
-    private val turnirRepo: TurnirRepository = TurnirRepository()
+    private val turnirRepo: TurnirRepository = TurnirRepository(),
+    private val izazovRepo: IzazovRepository = IzazovRepository()
 ) : ViewModel() {
 
     private var sessionTurnirId: String = ""
@@ -190,6 +195,20 @@ class PartijaViewModel(
         val s = _uiState.value
         if (s.resultSaved) return
         _uiState.value = s.copy(resultSaved = true)
+
+        // Izazov entry: the whole partija counts only toward the challenge score.
+        // Stars/tokens are settled by the izazov pot (75% winner / refund runner-up),
+        // not by the regular partija reward flow.
+        if (izazovId.isNotEmpty()) {
+            viewModelScope.launch {
+                runCatching {
+                    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@runCatching
+                    izazovRepo.submitScore(izazovId, uid, s.myTotal)
+                }
+            }
+            return
+        }
+
         val won = when {
             s.forfeitWon -> true
             s.forfeitLoss -> false
@@ -246,9 +265,10 @@ class PartijaViewModel(
 class PartijaViewModelFactory(
     private val sessionId: String,
     private val isPlayer1: Boolean,
-    private val isFriendly: Boolean = false
+    private val isFriendly: Boolean = false,
+    private val izazovId: String = ""
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        PartijaViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, isFriendly = isFriendly) as T
+        PartijaViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, isFriendly = isFriendly, izazovId = izazovId) as T
 }

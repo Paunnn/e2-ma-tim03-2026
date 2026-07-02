@@ -39,10 +39,11 @@ fun SpojniceScreen(
     sessionId: String = "",
     isPlayer1: Boolean = true,
     gameIdx: Int = -1,
+    izazovMode: Boolean = false,
     oppName: String = "Protivnik"
 ) {
     val viewModel: SpojniceViewModel = viewModel(
-        factory = SpojniceViewModelFactory(sessionId, isPlayer1, gameIdx)
+        factory = SpojniceViewModelFactory(sessionId, isPlayer1, gameIdx, izazovMode)
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val username by viewModel.username.collectAsStateWithLifecycle()
@@ -62,14 +63,22 @@ fun SpojniceScreen(
         }
     }
 
-    val roundLabel = if (roundIdx == 0) "Runda 1/2" else "Runda 2/2"
+    val roundLabel = when {
+        izazovMode -> "Runda 1/1"
+        roundIdx == 0 -> "Runda 1/2"
+        else -> "Runda 2/2"
+    }
     val oppTurnLabel = if (sessionId.isNotEmpty()) "Igra $oppName" else "Protivnikov red"
-    val phaseLabel = when (state.phase) {
-        SpojnicePhase.R1_ME  -> if (isMyTurn) "Vaš red, Runda 1" else "$oppTurnLabel, Runda 1"
-        SpojnicePhase.R1_OPP -> if (isMyTurn) "Vaš red, preostali pojmovi" else "$oppTurnLabel, preostali pojmovi"
-        SpojnicePhase.R2_OPP -> if (isMyTurn) "Vaš red, Runda 2" else "$oppTurnLabel, Runda 2"
-        SpojnicePhase.R2_ME  -> if (isMyTurn) "Vaš red, preostali pojmovi" else "$oppTurnLabel, preostali pojmovi"
-        SpojnicePhase.DONE   -> "Kraj"
+    val phaseLabel = when {
+        state.phase == SpojnicePhase.DONE -> "Kraj"
+        izazovMode -> "Vaš red"
+        else -> when (state.phase) {
+            SpojnicePhase.R1_ME  -> if (isMyTurn) "Vaš red, Runda 1" else "$oppTurnLabel, Runda 1"
+            SpojnicePhase.R1_OPP -> if (isMyTurn) "Vaš red, preostali pojmovi" else "$oppTurnLabel, preostali pojmovi"
+            SpojnicePhase.R2_OPP -> if (isMyTurn) "Vaš red, Runda 2" else "$oppTurnLabel, Runda 2"
+            SpojnicePhase.R2_ME  -> if (isMyTurn) "Vaš red, preostali pojmovi" else "$oppTurnLabel, preostali pojmovi"
+            else -> "Kraj"
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Navy)) {
@@ -87,6 +96,7 @@ fun SpojniceScreen(
                     oppScore = state.opponentScore + oppScoreOffset,
                     myName = username,
                     oppName = oppName,
+                    showOpponent = !izazovMode,
                     onExit = onExitClick
                 )
             }

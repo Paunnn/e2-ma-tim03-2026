@@ -38,10 +38,11 @@ fun KoZnaZnaScreen(
     sessionId: String = "",
     isPlayer1: Boolean = true,
     gameIdx: Int = -1,
+    izazovMode: Boolean = false,
     oppName: String = "Protivnik"
 ) {
     val viewModel: KoZnaZnaViewModel = viewModel(
-        factory = KoZnaZnaViewModelFactory(sessionId, isPlayer1, gameIdx)
+        factory = KoZnaZnaViewModelFactory(sessionId, isPlayer1, gameIdx, izazovMode)
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val username by viewModel.username.collectAsStateWithLifecycle()
@@ -70,6 +71,7 @@ fun KoZnaZnaScreen(
                     oppScore = state.opponentScore + oppScoreOffset,
                     myName = username,
                     oppName = oppName,
+                    showOpponent = !izazovMode,
                     onExit = onExitClick
                 )
             }
@@ -155,7 +157,7 @@ fun KoZnaZnaScreen(
                                     )
                                 }
 
-                                AnimatedVisibility(visible = state.playerAnswerIndex != null && !state.revealPhase) {
+                                AnimatedVisibility(visible = state.playerAnswerIndex != null && !state.revealPhase && !izazovMode) {
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp),
@@ -189,7 +191,8 @@ fun KoZnaZnaScreen(
                                         opponentAnswerIndex = state.opponentAnswerIndex,
                                         playerAnswerTimeMs = state.playerAnswerTimeMs,
                                         opponentAnswerTimeMs = state.opponentAnswerTimeMs,
-                                        oppName = oppName
+                                        oppName = oppName,
+                                        soloMode = izazovMode
                                     )
                                 }
                             }
@@ -316,7 +319,9 @@ private fun KoZnaZnaRevealPanel(
     opponentAnswerIndex: Int?,
     playerAnswerTimeMs: Long?,
     opponentAnswerTimeMs: Long?,
-    oppName: String = "Protivnik"
+    oppName: String = "Protivnik",
+    // Izazov: no opponent at all - only the player's own outcome is shown.
+    soloMode: Boolean = false
 ) {
     val pCorrect = playerAnswerIndex != null && playerAnswerIndex == question.correctIndex
     val oCorrect = opponentAnswerIndex != null && opponentAnswerIndex >= 0 && opponentAnswerIndex == question.correctIndex
@@ -324,6 +329,11 @@ private fun KoZnaZnaRevealPanel(
     val oTime = opponentAnswerTimeMs ?: Long.MAX_VALUE
 
     val outcomeText = when {
+        soloMode -> when {
+            playerAnswerIndex == null -> "Niste odgovorili, nema promena"
+            pCorrect -> "Tačno! +10"
+            else -> "Netačno (-5)"
+        }
         playerAnswerIndex == null && (opponentAnswerIndex == null || opponentAnswerIndex < 0) ->
             "Niko nije odgovorio, nema promena"
         playerAnswerIndex == null ->
@@ -359,16 +369,18 @@ private fun KoZnaZnaRevealPanel(
                 isWrong = playerAnswerIndex != null && !pCorrect,
                 labelColor = PrimaryBlueBright
             )
-            HorizontalDivider(color = LineSoft)
-            KoZnaZnaRevealRow(
-                label = oppName.take(10),
-                answerText = opponentAnswerIndex?.let { if (it >= 0) question.answers.getOrNull(it) else null }
-                    ?: "Nije odgovorio",
-                timeMs = opponentAnswerTimeMs,
-                isCorrect = oCorrect,
-                isWrong = opponentAnswerIndex != null && opponentAnswerIndex >= 0 && !oCorrect,
-                labelColor = Accent2
-            )
+            if (!soloMode) {
+                HorizontalDivider(color = LineSoft)
+                KoZnaZnaRevealRow(
+                    label = oppName.take(10),
+                    answerText = opponentAnswerIndex?.let { if (it >= 0) question.answers.getOrNull(it) else null }
+                        ?: "Nije odgovorio",
+                    timeMs = opponentAnswerTimeMs,
+                    isCorrect = oCorrect,
+                    isWrong = opponentAnswerIndex != null && opponentAnswerIndex >= 0 && !oCorrect,
+                    labelColor = Accent2
+                )
+            }
             HorizontalDivider(color = LineSoft)
             Text(
                 outcomeText,

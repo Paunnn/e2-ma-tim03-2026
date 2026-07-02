@@ -42,6 +42,7 @@ class AsocijacijeViewModel(
     private val sessionId: String = "",
     private val isPlayer1: Boolean = true,
     private val gameIdx: Int = -1,
+    private val izazovMode: Boolean = false,
     private val repo: AsocijacijeRepository = AsocijacijeRepository(),
     private val userRepo: UserRepository = UserRepository(),
     private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
@@ -349,7 +350,8 @@ class AsocijacijeViewModel(
                     }
                 }
             } else {
-                if (round == 1) startSinglePlayerRound(2) else endGame()
+                // Izazov: fully solo, one round only (spec 9d - every game appears once).
+                if (round == 1 && !izazovMode) startSinglePlayerRound(2) else endGame()
             }
         }
     }
@@ -470,7 +472,8 @@ class AsocijacijeViewModel(
             } else {
                 viewModelScope.launch {
                     delay(2500L)
-                    if (state.currentRound == 1) startSinglePlayerRound(2) else endGame()
+                    // Izazov: fully solo, one round only (spec 9d - every game appears once).
+                    if (state.currentRound == 1 && !izazovMode) startSinglePlayerRound(2) else endGame()
                 }
             }
         } else {
@@ -492,7 +495,8 @@ class AsocijacijeViewModel(
     private fun startSinglePlayerRound(round: Int) {
         timerJob?.cancel(); opponentJob?.cancel()
         val question = if (round == 1) round1Question else round2Question
-        val myTurnFirst = round == 1
+        // Izazov: fully solo - it's always the player's turn.
+        val myTurnFirst = izazovMode || round == 1
         _uiState.value = AsocijacijeUiState(
             phase = if (myTurnFirst) AsocijacijePhase.MY_TURN else AsocijacijePhase.OPPONENT_TURN,
             currentQuestion = question,
@@ -506,6 +510,11 @@ class AsocijacijeViewModel(
     }
 
     private fun passToOpponent() {
+        // Izazov: there is no opponent - the "pass" just lets the player open another field.
+        if (izazovMode) {
+            _uiState.value = _uiState.value.copy(hasRevealedThisTurn = false)
+            return
+        }
         _uiState.value = _uiState.value.copy(
             phase = AsocijacijePhase.OPPONENT_TURN, isMyTurn = false, hasRevealedThisTurn = false
         )
@@ -513,6 +522,7 @@ class AsocijacijeViewModel(
     }
 
     private fun scheduleOpponentTurn() {
+        if (izazovMode) return
         opponentJob?.cancel()
         opponentJob = viewModelScope.launch {
             delay((1500L..2500L).random())
@@ -642,9 +652,10 @@ class AsocijacijeViewModel(
 class AsocijacijeViewModelFactory(
     private val sessionId: String,
     private val isPlayer1: Boolean,
-    private val gameIdx: Int
+    private val gameIdx: Int,
+    private val izazovMode: Boolean = false
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        AsocijacijeViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx) as T
+        AsocijacijeViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx, izazovMode = izazovMode) as T
 }

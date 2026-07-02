@@ -9,7 +9,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,17 +24,28 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tim03.slagalica.data.model.IzazovSession
 import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.IzazovPhase
-import com.tim03.slagalica.viewmodel.IzazovQuestion
 import com.tim03.slagalica.viewmodel.IzazovViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IzazovScreen(
     onBack: () -> Unit,
+    onPlayIzazov: (String) -> Unit = {},
     vm: IzazovViewModel = viewModel()
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
     var showCreateDialog by remember { mutableStateOf(false) }
+
+    // Refresh balance/list when (re-)entering, e.g. coming back from the izazov partija.
+    LaunchedEffect(Unit) { vm.refresh() }
+
+    // One-shot navigation into the solo partija for this izazov.
+    LaunchedEffect(state.playIzazovId) {
+        state.playIzazovId?.let { id ->
+            vm.consumePlayEvent()
+            onPlayIzazov(id)
+        }
+    }
 
     if (showCreateDialog) {
         CreateIzazovDialog(
@@ -95,7 +105,8 @@ fun IzazovScreen(
                                 myUid = state.myUid,
                                 onJoin = { vm.joinIzazov(session) },
                                 onPlay = { vm.playExisting(session) },
-                                onViewResults = { vm.viewResults(session) }
+                                onViewResults = { vm.viewResults(session) },
+                                onFinalizeEarly = { vm.finalizeEarly(session) }
                             )
                         }
                     }
@@ -107,18 +118,6 @@ fun IzazovScreen(
             Box(Modifier.fillMaxSize().background(Navy), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Gold)
             }
-        }
-
-        IzazovPhase.PLAYING -> {
-            IzazovGameScreen(
-                questions = state.gameQuestions,
-                currentIndex = state.currentQuestionIndex,
-                selectedAnswer = state.selectedAnswer,
-                score = state.gameScore,
-                gameComplete = state.gameComplete,
-                onSelectAnswer = vm::selectAnswer,
-                onNext = vm::nextQuestion
-            )
         }
 
         IzazovPhase.RESULTS -> {
@@ -137,13 +136,22 @@ internal fun IzazovCard(
     myUid: String,
     onJoin: () -> Unit,
     onPlay: () -> Unit = {},
-    onViewResults: () -> Unit
+    onViewResults: () -> Unit,
+    onFinalizeEarly: () -> Unit = {}
 ) {
     val isMine = session.participants.contains(myUid)
     val hasPlayed = session.hasPlayed(myUid)
+    val isCompleted = session.status == "completed"
+    val isPoster = session.posterId == myUid
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isCompleted || session.scores.isNotEmpty())
+                    Modifier.clickable(onClick = onViewResults)
+                else Modifier
+            ),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = NavyCard)
     ) {
@@ -165,9 +173,22 @@ internal fun IzazovCard(
                             BidChip("T ${session.bidTokens}", Accent4)
                         }
                         BidChip("${session.participants.size}/4 igrača", LightGray)
+                        when {
+                            isCompleted -> BidChip("Završen", MediumGray)
+                            else -> {
+                                val minLeft = ((session.expiresAt - System.currentTimeMillis()) / 60000L + 1)
+                                    .coerceAtLeast(0)
+                                BidChip("još $minLeft min", Accent2)
+                            }
+                        }
                     }
                 }
                 when {
+                    isCompleted -> {
+                        TextButton(onClick = onViewResults) {
+                            Text("Rezultati", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                     hasPlayed -> {
                         val myScore = session.scores[myUid] ?: 0L
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -224,6 +245,25 @@ internal fun IzazovCard(
                             Text(name, color = if (uid == myUid) Gold else White, fontSize = 12.sp)
                         }
                         Text("$score", color = LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // Poster controls: close early once everyone who joined has played,
+            // or cancel (with refund) while still alone.
+            if (session.status == "open" && isPoster) {
+                val canClose = session.participants.size >= 2 && session.allPlayed()
+                val canCancel = session.participants.size == 1
+                if (canClose || canCancel) {
+                    TextButton(
+                        onClick = onFinalizeEarly,
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text(
+                            if (canClose) "Završi izazov" else "Otkaži (vrati ulog)",
+                            color = if (canClose) Gold else MediumGray,
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -319,143 +359,6 @@ internal fun CreateIzazovDialog(
             TextButton(onClick = onDismiss) { Text("Otkaži", color = MediumGray) }
         }
     )
-}
-
-@Composable
-internal fun IzazovGameScreen(
-    questions: List<IzazovQuestion>,
-    currentIndex: Int,
-    selectedAnswer: Int,
-    score: Int,
-    gameComplete: Boolean,
-    onSelectAnswer: (Int) -> Unit,
-    onNext: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Navy)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(Modifier.height(24.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Izazov", color = Gold, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
-                Text(
-                    "${minOf(currentIndex, questions.size)}/${questions.size}",
-                    color = LightGray, fontSize = 13.sp
-                )
-            }
-
-            LinearProgressIndicator(
-                progress = { currentIndex.toFloat() / questions.size.coerceAtLeast(1) },
-                modifier = Modifier.fillMaxWidth().height(4.dp).padding(vertical = 8.dp).clip(RoundedCornerShape(2.dp)),
-                color = Gold,
-                trackColor = NavyCard
-            )
-
-            if (gameComplete || currentIndex >= questions.size) {
-                Spacer(Modifier.weight(1f))
-                Icon(Icons.Default.EmojiEvents, null, tint = Gold, modifier = Modifier.size(64.dp))
-                Spacer(Modifier.height(16.dp))
-                Text("Gotovo!", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
-                Text("Tvoj rezultat: $score / ${questions.size * 10}", color = LightGray, fontSize = 14.sp)
-                Spacer(Modifier.height(32.dp))
-                CircularProgressIndicator(color = PrimaryBlueBright, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
-                Text("Čekaj rezultate...", color = MediumGray, fontSize = 12.sp)
-                Spacer(Modifier.weight(1f))
-            } else {
-                val question = questions[currentIndex]
-                Spacer(Modifier.height(32.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = NavyCard)
-                ) {
-                    Text(
-                        question.question,
-                        color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(20.dp)
-                    )
-                }
-
-                Spacer(Modifier.height(24.dp))
-
-                val optionColors = listOf(Accent2, Accent4, PrimaryBlueBright, Gold)
-                question.options.forEachIndexed { i, option ->
-                    val bgColor = when {
-                        selectedAnswer == -1 -> NavyCard
-                        i == question.correctIndex -> SuccessGreen.copy(alpha = 0.25f)
-                        i == selectedAnswer -> ErrorRed.copy(alpha = 0.25f)
-                        else -> NavyCard
-                    }
-                    val borderColor = when {
-                        selectedAnswer == -1 -> LineColor
-                        i == question.correctIndex -> SuccessGreen
-                        i == selectedAnswer -> ErrorRed
-                        else -> LineColor
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 5.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(bgColor)
-                            .then(
-                                if (selectedAnswer == -1) Modifier.clickable { onSelectAnswer(i) }
-                                else Modifier
-                            )
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(optionColors[i].copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    ('A' + i).toString(),
-                                    color = optionColors[i],
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Text(option, color = White, fontSize = 14.sp)
-                        }
-                    }
-                }
-
-                if (selectedAnswer != -1) {
-                    Spacer(Modifier.height(20.dp))
-                    Button(
-                        onClick = onNext,
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright)
-                    ) {
-                        Text(
-                            if (currentIndex + 1 < questions.size) "Sledeće pitanje" else "Završi",
-                            color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

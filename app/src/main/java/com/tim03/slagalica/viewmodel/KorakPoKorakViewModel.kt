@@ -42,6 +42,7 @@ class KorakPoKorakViewModel(
     private val sessionId: String = "",
     private val isPlayer1: Boolean = true,
     private val gameIdx: Int = -1,
+    private val izazovMode: Boolean = false,
     private val repo: KorakPoKorakRepository = KorakPoKorakRepository(),
     private val userRepo: UserRepository = UserRepository(),
     private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
@@ -547,6 +548,12 @@ class KorakPoKorakViewModel(
     // ─── Single-player helpers ───
 
     private fun startOpponentBonusPhase() {
+        // Izazov: fully solo - no bot bonus attempt, just move on.
+        if (izazovMode) {
+            timerJob?.cancel()
+            proceedAfterMyRound()
+            return
+        }
         val allSteps = currentQuestion?.steps?.size ?: 7
         _uiState.value = _uiState.value.copy(
             phase = KorakPoKorakPhase.OPPONENT_BONUS,
@@ -575,6 +582,8 @@ class KorakPoKorakViewModel(
     }
 
     private fun proceedAfterMyRound() {
+        // Izazov: fully solo, one round only (spec 9d - every game appears once).
+        if (izazovMode) { endGame(); return }
         if (_uiState.value.currentRound == 1) startRound2() else endGame()
     }
 
@@ -659,9 +668,10 @@ class KorakPoKorakViewModel(
 class KorakPoKorakViewModelFactory(
     private val sessionId: String,
     private val isPlayer1: Boolean,
-    private val gameIdx: Int
+    private val gameIdx: Int,
+    private val izazovMode: Boolean = false
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        KorakPoKorakViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx) as T
+        KorakPoKorakViewModel(sessionId = sessionId, isPlayer1 = isPlayer1, gameIdx = gameIdx, izazovMode = izazovMode) as T
 }
