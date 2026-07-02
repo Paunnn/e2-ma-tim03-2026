@@ -19,6 +19,37 @@ class UserRepository {
         return doc.toObject(User::class.java)?.copy(uid = firebaseUser.uid)
     }
 
+    // Fire-and-forget, called from MainActivity.onStop: leaving the app (home button,
+    // screen off, closing the task) un-counts the player - not just an explicit logout.
+    fun markInactiveAsync() {
+        val user = auth.currentUser ?: return
+        if (user.isAnonymous) return
+        db.collection("users").document(user.uid).update("loggedIn", false)
+    }
+
+    // Called whenever the auth screens are shown: Firebase persists the previous
+    // account's session across app restarts, and that account must not count as an
+    // active player just because the app was launched.
+    suspend fun clearPresence() {
+        val user = auth.currentUser ?: return
+        if (user.isAnonymous) return
+        db.collection("users").document(user.uid).update("loggedIn", false).await()
+    }
+
+    // Presence heartbeat - runs every minute, but only while the user is past the
+    // login screen (gated in AppNavigation). Also re-asserts loggedIn, so accounts
+    // whose logout write was lost heal themselves.
+    suspend fun updatePresence() {
+        val user = auth.currentUser ?: return
+        if (user.isAnonymous) return
+        db.collection("users").document(user.uid).update(
+            mapOf(
+                "lastActive" to System.currentTimeMillis(),
+                "loggedIn" to true
+            )
+        ).await()
+    }
+
     suspend fun updateAvatar(avatarIndex: Int) {
         val uid = auth.currentUser?.uid ?: return
         db.collection("users").document(uid).update("avatarIndex", avatarIndex).await()
@@ -294,7 +325,13 @@ class UserRepository {
         return bonus
     }
 
-    fun logout() = auth.signOut()
+    fun logout() {
+        // Clear the flag before signing out - after signOut the write could be rejected.
+        auth.currentUser?.takeIf { !it.isAnonymous }?.let {
+            db.collection("users").document(it.uid).update("loggedIn", false)
+        }
+        auth.signOut()
+    }
 }
 
 data class StarAwardResult(

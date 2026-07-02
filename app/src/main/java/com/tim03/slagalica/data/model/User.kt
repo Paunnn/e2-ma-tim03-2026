@@ -13,6 +13,12 @@ data class User(
     val weeklyStars: Int = 0,
     val monthlyStars: Int = 0,
     val fcmToken: String = "",
+    // True from successful login until logout - "currently active" players are the
+    // logged-in ones. (Named "loggedIn", not "isLoggedIn": Firestore's bean mapper
+    // would strip the "is" prefix and read/write a mismatched field name.)
+    val loggedIn: Boolean = false,
+    // Presence heartbeat (ms epoch) - refreshed every minute while the app is foregrounded.
+    val lastActive: Long = 0L,
     val lastDailyTokenDate: String = "",
     val lastMonthlyCheck: String = "",
     val koZnaZnaCorrect: Int = 0,

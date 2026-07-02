@@ -162,6 +162,7 @@ fun ProfileScreen(
                 ) {
                     ProfileHeaderSection(
                         user = state.user,
+                        regionPlacementPrevCycle = state.regionPlacementPrevCycle,
                         onEditAvatarClick = { showAvatarDialog = true }
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -178,7 +179,19 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun ProfileHeaderSection(user: User?, onEditAvatarClick: () -> Unit) {
+private fun ProfileHeaderSection(
+    user: User?,
+    regionPlacementPrevCycle: Int = 0,
+    onEditAvatarClick: () -> Unit
+) {
+    // Spec 5e: gold/silver/bronze avatar frame if the user's region finished
+    // 1st/2nd/3rd in the previous monthly cycle; neutral frame otherwise.
+    val frameColor = when (regionPlacementPrevCycle) {
+        1 -> Gold
+        2 -> Color(0xFFC0C0C0)
+        3 -> Color(0xFFCD7F32)
+        else -> MediumGray
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -191,7 +204,7 @@ private fun ProfileHeaderSection(user: User?, onEditAvatarClick: () -> Unit) {
                     modifier = Modifier
                         .size(96.dp)
                         .clip(CircleShape)
-                        .border(3.dp, Gold, CircleShape)
+                        .border(3.dp, frameColor, CircleShape)
                         .background(PrimaryBlue),
                     contentAlignment = Alignment.Center
                 ) {

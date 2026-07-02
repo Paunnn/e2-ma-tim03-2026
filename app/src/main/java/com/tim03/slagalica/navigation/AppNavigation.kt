@@ -1,14 +1,21 @@
 package com.tim03.slagalica.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
+import com.tim03.slagalica.data.repository.UserRepository
+import kotlinx.coroutines.delay
 import com.tim03.slagalica.ui.auth.ChangePasswordScreen
 import com.tim03.slagalica.ui.auth.LoginScreen
 import com.tim03.slagalica.ui.auth.RegisterScreen
@@ -39,6 +46,30 @@ fun AppNavigation(navController: NavHostController) {
     val notifViewModel: NotificationsViewModel = viewModel()
     val unreadCount by notifViewModel.unreadCount.collectAsState()
     val homeViewModel: HomeViewModel = viewModel()
+
+    // Presence: on the auth screens the persisted session's loggedIn flag is cleared
+    // (merely launching the app must not count as an active player). Past the login
+    // screen a lifecycle-aware heartbeat re-asserts loggedIn + lastActive every minute
+    // while the app is foregrounded - and immediately on returning to the foreground,
+    // undoing the loggedIn=false that MainActivity.onStop wrote when the app was left.
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+    val onAuthScreen = currentRoute == null ||
+        currentRoute == Screen.Login.route || currentRoute == Screen.Register.route
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(onAuthScreen) {
+        val userRepo = UserRepository()
+        if (onAuthScreen) {
+            runCatching { userRepo.clearPresence() }
+        } else {
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    runCatching { userRepo.updatePresence() }
+                    delay(60_000L)
+                }
+            }
+        }
+    }
 
     NavHost(navController = navController, startDestination = Screen.Login.route) {
 

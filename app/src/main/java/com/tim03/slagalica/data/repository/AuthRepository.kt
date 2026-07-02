@@ -62,10 +62,16 @@ class AuthRepository {
             error("EMAIL_NOT_VERIFIED")
         }
 
-        // Save FCM token after successful login
+        // Save FCM token + mark the account as logged in (counts as "active player")
         runCatching {
             val token = FirebaseMessaging.getInstance().token.await()
-            firestore.collection("users").document(user.uid).update("fcmToken", token).await()
+            firestore.collection("users").document(user.uid).update(
+                mapOf(
+                    "fcmToken" to token,
+                    "loggedIn" to true,
+                    "lastActive" to System.currentTimeMillis()
+                )
+            ).await()
         }
 
         user
@@ -109,7 +115,13 @@ class AuthRepository {
         }
     }
 
-    fun logout() = auth.signOut()
+    fun logout() {
+        // Clear the flag before signing out - after signOut the write could be rejected.
+        auth.currentUser?.takeIf { !it.isAnonymous }?.let {
+            firestore.collection("users").document(it.uid).update("loggedIn", false)
+        }
+        auth.signOut()
+    }
 
     fun currentUser(): FirebaseUser? = auth.currentUser
 

@@ -2,6 +2,9 @@ package com.tim03.slagalica.data.repository
 
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 class FirestoreSeedRepository {
     private val db = FirebaseFirestore.getInstance()
@@ -11,6 +14,28 @@ class FirestoreSeedRepository {
         seedAsocijacije()
         seedKoZnaZna()
         seedSpojnice()
+        seedRegionHistory()
+    }
+
+    // Spec 5e demo data: the previous monthly cycle initially has Vojvodina in 1st
+    // place (Beograd 2nd, Zapadna Srbija 3rd), so players from those regions get a
+    // gold/silver/bronze avatar frame on the Profile page. Written only while
+    // region_history is empty - real cycle snapshots take over from then on.
+    private suspend fun seedRegionHistory() {
+        val collection = db.collection("region_history")
+        val existing = collection.limit(1).get().await()
+        if (!existing.isEmpty) return
+
+        val cal = Calendar.getInstance()
+        cal.add(Calendar.MONTH, -1)
+        val prevMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(cal.time)
+        collection.document(prevMonth).set(mapOf(
+            "monthKey" to prevMonth,
+            "first" to "Vojvodina",
+            "second" to "Beograd",
+            "third" to "Zapadna Srbija",
+            "totals" to emptyMap<String, Long>()
+        )).await()
     }
 
     private suspend fun seedKorakPoKorak() {

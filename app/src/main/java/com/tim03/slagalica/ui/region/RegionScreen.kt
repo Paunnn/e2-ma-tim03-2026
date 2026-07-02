@@ -40,28 +40,45 @@ import com.tim03.slagalica.ui.theme.*
 import com.tim03.slagalica.viewmodel.IzazovPhase
 import com.tim03.slagalica.viewmodel.IzazovViewModel
 import com.tim03.slagalica.viewmodel.RegionViewModel
-import kotlin.math.abs
 
 private val Silver = Color(0xFFC0C0C0)
 private val Bronze = Color(0xFFCD7F32)
 
-// Approximate lat/lng bounding boxes for each Serbian region
-private data class RegionLatLngBounds(
-    val latMin: Double, val latMax: Double,
-    val lngMin: Double, val lngMax: Double
-)
-
-// Bounds are deliberately inset well away from national borders (Croatia, Hungary,
-// Romania, Bulgaria, North Macedonia, Bosnia) so hashed dots never render outside
-// Serbia — a plain rectangle can't follow the actual (non-rectangular) borders,
-// so we trade a bit of edge-territory coverage for staying inside the country.
-private val REGION_LATLNG_BOUNDS = mapOf(
-    "Vojvodina"          to RegionLatLngBounds(44.90, 45.95, 19.20, 21.10),
-    "Beograd"            to RegionLatLngBounds(44.62, 44.92, 20.25, 20.65),
-    "Centralna Srbija"   to RegionLatLngBounds(43.90, 44.55, 20.30, 21.20),
-    "Zapadna Srbija"     to RegionLatLngBounds(43.35, 44.20, 19.55, 20.10),
-    "Istočna Srbija"     to RegionLatLngBounds(43.65, 44.55, 21.65, 22.30),
-    "Jugoistočna Srbija" to RegionLatLngBounds(42.45, 43.25, 20.70, 22.00)
+// Approximate polygons (lat, lng) for each Serbian region. Every vertex is deliberately
+// placed a safe margin INSIDE the national border (Hungary, Romania, Bulgaria, North
+// Macedonia, Bosnia, Croatia), so points sampled inside the polygon can never land
+// abroad — unlike the old bounding boxes, whose corners reached into Romania.
+private val REGION_POLYGONS: Map<String, List<Pair<Double, Double>>> = mapOf(
+    "Vojvodina" to listOf(
+        45.90 to 19.25, 45.95 to 19.70, 45.80 to 20.05, 45.70 to 20.30,
+        45.50 to 20.55, 45.25 to 20.90, 45.10 to 21.15, 44.93 to 21.15,
+        44.88 to 20.85, 44.92 to 20.45, 44.95 to 20.10, 45.03 to 19.70,
+        45.12 to 19.30, 45.40 to 19.20, 45.60 to 19.10, 45.80 to 19.10
+    ),
+    "Beograd" to listOf(
+        44.90 to 20.25, 44.92 to 20.45, 44.88 to 20.62, 44.75 to 20.72,
+        44.62 to 20.65, 44.55 to 20.45, 44.62 to 20.25, 44.78 to 20.18
+    ),
+    "Zapadna Srbija" to listOf(
+        44.55 to 19.50, 44.60 to 19.90, 44.50 to 20.20, 44.20 to 20.30,
+        43.90 to 20.35, 43.60 to 20.30, 43.40 to 20.15, 43.35 to 19.95,
+        43.45 to 19.70, 43.70 to 19.55, 44.00 to 19.45, 44.30 to 19.40
+    ),
+    "Centralna Srbija" to listOf(
+        44.60 to 20.40, 44.65 to 20.80, 44.65 to 21.20, 44.50 to 21.45,
+        44.20 to 21.50, 43.90 to 21.45, 43.65 to 21.30, 43.60 to 21.00,
+        43.70 to 20.60, 43.90 to 20.40, 44.20 to 20.35, 44.45 to 20.30
+    ),
+    "Istočna Srbija" to listOf(
+        44.55 to 21.60, 44.55 to 21.85, 44.35 to 22.05, 44.30 to 22.40,
+        44.10 to 22.50, 43.95 to 22.30, 43.75 to 22.15, 43.70 to 21.90,
+        43.80 to 21.60, 44.10 to 21.55, 44.35 to 21.55
+    ),
+    "Jugoistočna Srbija" to listOf(
+        43.40 to 21.40, 43.45 to 21.75, 43.35 to 22.10, 43.20 to 22.45,
+        43.05 to 22.55, 42.85 to 22.35, 42.65 to 22.25, 42.50 to 22.05,
+        42.45 to 21.85, 42.60 to 21.70, 42.85 to 21.60, 43.10 to 21.45
+    )
 )
 
 private val REGION_MAP_COLORS = mapOf(
@@ -73,12 +90,36 @@ private val REGION_MAP_COLORS = mapOf(
     "Jugoistočna Srbija" to Color(0xFF5A7A4A)
 )
 
+// Standard ray-casting point-in-polygon test.
+private fun pointInPolygon(lat: Double, lng: Double, poly: List<Pair<Double, Double>>): Boolean {
+    var inside = false
+    var j = poly.size - 1
+    for (i in poly.indices) {
+        val (latI, lngI) = poly[i]
+        val (latJ, lngJ) = poly[j]
+        if ((lngI > lng) != (lngJ > lng) &&
+            lat < (latJ - latI) * (lng - lngI) / (lngJ - lngI) + latI
+        ) inside = !inside
+        j = i
+    }
+    return inside
+}
+
+// Deterministic per-player point inside the region polygon: a uid-seeded RNG samples
+// the polygon's bounding box and rejects points outside the polygon, so the same
+// player always gets the same dot and the dot is always inside the region.
 private fun playerGeoPoint(uid: String, region: String): GeoPoint? {
-    val bounds = REGION_LATLNG_BOUNDS[region] ?: return null
-    val hash = uid.hashCode()
-    val lat = bounds.latMin + (abs(hash % 1000) / 1000.0) * (bounds.latMax - bounds.latMin)
-    val lng = bounds.lngMin + (abs(hash / 1000 % 1000) / 1000.0) * (bounds.lngMax - bounds.lngMin)
-    return GeoPoint(lat, lng)
+    val poly = REGION_POLYGONS[region] ?: return null
+    val latMin = poly.minOf { it.first }; val latMax = poly.maxOf { it.first }
+    val lngMin = poly.minOf { it.second }; val lngMax = poly.maxOf { it.second }
+    val rnd = java.util.Random(uid.hashCode().toLong())
+    repeat(100) {
+        val lat = latMin + rnd.nextDouble() * (latMax - latMin)
+        val lng = lngMin + rnd.nextDouble() * (lngMax - lngMin)
+        if (pointInPolygon(lat, lng, poly)) return GeoPoint(lat, lng)
+    }
+    // Practically unreachable; polygon centroid is a safe interior fallback for our shapes.
+    return GeoPoint(poly.map { it.first }.average(), poly.map { it.second }.average())
 }
 
 private class PlayerDotsOverlay(
@@ -120,6 +161,25 @@ private fun SerbiaMapView(players: List<MapPlayerDot>, myUid: String) {
 
     LaunchedEffect(players, myUid) {
         mapView.overlays.clear()
+        // Region polygons first (below the dots) - the visible "map of Serbian regions".
+        REGION_POLYGONS.forEach { (region, poly) ->
+            val color = REGION_MAP_COLORS[region] ?: Color(0xFF2E6FA3)
+            val argb = android.graphics.Color.argb(
+                60,
+                (color.red * 255).toInt(), (color.green * 255).toInt(), (color.blue * 255).toInt()
+            )
+            val outline = android.graphics.Color.argb(
+                180,
+                (color.red * 255).toInt(), (color.green * 255).toInt(), (color.blue * 255).toInt()
+            )
+            mapView.overlays.add(org.osmdroid.views.overlay.Polygon(mapView).apply {
+                points = poly.map { (lat, lng) -> GeoPoint(lat, lng) }
+                fillPaint.color = argb
+                outlinePaint.color = outline
+                outlinePaint.strokeWidth = 3f
+                title = region
+            })
+        }
         mapView.overlays.add(PlayerDotsOverlay(players, myUid))
         mapView.invalidate()
     }
@@ -433,19 +493,40 @@ private fun RegionDetailDialog(
             }
         },
         text = {
-            if (isLoadingPlayers) {
-                Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = PrimaryBlueBright)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Spec 5d: podium finishes across closed monthly cycles + player counts.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    RegionStatChip("🥇", "${stats.firstPlaces}", "prvih")
+                    RegionStatChip("🥈", "${stats.secondPlaces}", "drugih")
+                    RegionStatChip("🥉", "${stats.thirdPlaces}", "trećih")
                 }
-            } else if (players.isEmpty()) {
-                Text("Nema aktivnih igrača u ovom regionu.", color = MediumGray, fontSize = 13.sp)
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    players.take(10).forEach { player ->
-                        PlayerRow(player)
+                HorizontalDivider(color = LineColor)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    RegionStatChip("🟢", "${stats.activePlayers}", "aktivnih")
+                    RegionStatChip("👥", "${stats.totalPlayers}", "registrovanih")
+                }
+                HorizontalDivider(color = LineColor)
+
+                if (isLoadingPlayers) {
+                    Box(Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = PrimaryBlueBright)
                     }
-                    if (players.size > 10) {
-                        Text("...i još ${players.size - 10} igrača", color = MediumGray, fontSize = 11.sp)
+                } else if (players.isEmpty()) {
+                    Text("Nema igrača u ovom regionu.", color = MediumGray, fontSize = 13.sp)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        players.take(10).forEach { player ->
+                            PlayerRow(player)
+                        }
+                        if (players.size > 10) {
+                            Text("...i još ${players.size - 10} igrača", color = MediumGray, fontSize = 11.sp)
+                        }
                     }
                 }
             }
@@ -456,6 +537,15 @@ private fun RegionDetailDialog(
             }
         }
     )
+}
+
+@Composable
+private fun RegionStatChip(emoji: String, value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(emoji, fontSize = 18.sp)
+        Text(value, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+        Text(label, color = MediumGray, fontSize = 10.sp)
+    }
 }
 
 @Composable

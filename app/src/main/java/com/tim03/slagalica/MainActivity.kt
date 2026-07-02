@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.tim03.slagalica.data.repository.FirestoreSeedRepository
+import com.tim03.slagalica.data.repository.UserRepository
 import com.tim03.slagalica.navigation.AppNavigation
 import com.tim03.slagalica.service.SlagalicaFirebaseMessagingService
 import com.tim03.slagalica.ui.theme.SlagalicaTheme
@@ -33,6 +34,9 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try { FirestoreSeedRepository().seedDatabase() } catch (_: Exception) {}
         }
+        // Presence heartbeat lives in AppNavigation, gated on the current route:
+        // it must NOT run while the app sits on the login screen with a session
+        // Firebase persisted from a previous run.
 
         setContent {
             SlagalicaTheme {
@@ -40,6 +44,13 @@ class MainActivity : ComponentActivity() {
                 AppNavigation(navController = navController)
             }
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Leaving the app counts as leaving the game: drop the "active player" flag.
+        // Coming back re-asserts it right away (lifecycle-aware heartbeat in AppNavigation).
+        UserRepository().markInactiveAsync()
     }
 
     private fun requestNotificationPermissionIfNeeded() {
