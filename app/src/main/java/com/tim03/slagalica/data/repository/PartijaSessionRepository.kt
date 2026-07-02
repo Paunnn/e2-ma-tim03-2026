@@ -1,5 +1,6 @@
 package com.tim03.slagalica.data.repository
 
+import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.tim03.slagalica.data.model.PartijaSession
@@ -55,6 +56,28 @@ class PartijaSessionRepository {
                 "status" to "forfeited",
                 "forfeitedBy" to if (isPlayer1) "player1" else "player2"
             )).await()
+        }
+    }
+
+    // Lightweight listener used by the mini-game viewmodels to react as soon as either
+    // player forfeits the partija, so they can skip waiting on someone who's gone.
+    fun listenToForfeit(
+        sessionId: String,
+        onForfeit: (forfeitedByPlayer1: Boolean) -> Unit
+    ): ListenerRegistration {
+        return sessions.document(sessionId).addSnapshotListener { snap, error ->
+            if (error != null) {
+                Log.e("PartijaDbg", "listenToForfeit error for $sessionId", error)
+                return@addSnapshotListener
+            }
+            val doc = snap?.takeIf { it.exists() }
+            Log.d("PartijaDbg", "listenToForfeit snapshot sid=$sessionId status=${doc?.getString("status")} forfeitedBy=${doc?.getString("forfeitedBy")}")
+            if (doc == null) return@addSnapshotListener
+            if (doc.getString("status") != "forfeited") return@addSnapshotListener
+            when (doc.getString("forfeitedBy")) {
+                "player1" -> onForfeit(true)
+                "player2" -> onForfeit(false)
+            }
         }
     }
 

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.firestore.ListenerRegistration
 import com.tim03.slagalica.data.repository.MultiplayerGameRepository
+import com.tim03.slagalica.data.repository.PartijaSessionRepository
 import com.tim03.slagalica.data.repository.UserRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -49,7 +50,8 @@ class SkockoViewModel(
     private val isPlayer1: Boolean = true,
     private val gameIdx: Int = -1,
     private val userRepo: UserRepository = UserRepository(),
-    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository()
+    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
+    private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository()
 ) : ViewModel() {
 
     val isMultiplayer = sessionId.isNotEmpty()
@@ -63,6 +65,10 @@ class SkockoViewModel(
     private var timerJob: Job? = null
     private var opponentJob: Job? = null
     private var mpListener: ListenerRegistration? = null
+    private var forfeitListener: ListenerRegistration? = null
+    private var opponentForfeited = false
+    // Firestore phases already force-written on the absent opponent's behalf.
+    private val forcedWrites = mutableSetOf<String>()
 
     private var solvedAtAttemptNum: Int? = null
     private var resultSaved = false
@@ -75,6 +81,14 @@ class SkockoViewModel(
         if (isMultiplayer) startMultiplayerGame() else startGame()
         viewModelScope.launch {
             runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
+        }
+        if (isMultiplayer) {
+            forfeitListener = sessionRepo.listenToForfeit(sessionId) { forfeitedByPlayer1 ->
+                if (forfeitedByPlayer1 != isPlayer1) {
+                    opponentForfeited = true
+                    forceOpponentTurnEndDueToForfeit()
+                }
+            }
         }
     }
 
@@ -92,6 +106,14 @@ class SkockoViewModel(
     }
 
     // ─── Multiplayer ───
+
+    // Normally P1 always sets up each mini-game. But if P1 forfeited the partija before
+    // this game was ever reached, nobody else would - so P2 must take over as initializer.
+    private suspend fun isFallbackInitializer(): Boolean {
+        if (isPlayer1) return false
+        val session = sessionRepo.getSession(sessionId) ?: return false
+        return session.status == "forfeited" && session.forfeitedBy == "player1"
+    }
 
     private fun startMultiplayerGame() {
         viewModelScope.launch {
@@ -120,8 +142,39 @@ class SkockoViewModel(
                     currentRound = 1
                 )
                 startTimer(30)
+                listenForMultiplayerPhase()
+            } else if (isFallbackInitializer()) {
+                // P1 is gone - I set up round 1 myself, then immediately treat their
+                // never-going-to-happen turn as forfeited (0 points) so I can play.
+                val sol1 = generateSolution()
+                val sol2 = generateSolution()
+                mp_sol1 = sol1; mp_sol2 = sol2
+                mpRepo.initGame(
+                    sessionId, gameIdx, "sk_r1",
+                    mapOf(
+                        "type" to "sk",
+                        "sol1" to sol1.map { it.toLong() },
+                        "sol2" to sol2.map { it.toLong() },
+                        "r1Score" to 0L, "r1Bonus" to 0L,
+                        "r2Score" to 0L, "r2Bonus" to 0L,
+                        "r1Attempts" to emptyList<Any>(),
+                        "r2Attempts" to emptyList<Any>(),
+                        "showSolution" to false,
+                        "solutionSymbols" to emptyList<Long>()
+                    )
+                )
+                _uiState.value = SkockoUiState(
+                    phase = SkockoPhase.WAITING_OPPONENT,
+                    mySolution = sol2,
+                    opponentSolution = sol1,
+                    currentRound = 1,
+                    timeLeft = 30
+                )
+                listenForMultiplayerPhase()
+                forceOpponentTurnEndDueToForfeit()
+            } else {
+                listenForMultiplayerPhase()
             }
-            listenForMultiplayerPhase()
         }
     }
 
@@ -135,6 +188,9 @@ class SkockoViewModel(
             } else {
                 handleMpLiveUpdate(phase, data)
             }
+            // Re-check after every state change: a forced transition lands me in the NEXT
+            // waiting phase, which must also be skipped - the absent opponent never writes.
+            if (opponentForfeited) forceOpponentTurnEndDueToForfeit()
         }
     }
 
@@ -383,6 +439,34 @@ class SkockoViewModel(
                 } else endGame()
             }
             else -> {}
+        }
+    }
+
+    // ─── Opponent forfeit ───
+    // While I'm waiting on the opponent's turn or their bonus attempt, they'll never write
+    // the phase transition if they've left. Write it myself, crediting them 0, so I can
+    // continue right away instead of sitting through the waiting countdown.
+    private fun forceOpponentTurnEndDueToForfeit() {
+        val state = _uiState.value
+        if (state.phase == SkockoPhase.GAME_OVER) return
+        if (state.phase != SkockoPhase.WAITING_OPPONENT && state.phase != SkockoPhase.OPPONENT_BONUS_R1) return
+        val (targetPhase, dataMap) = when {
+            state.phase == SkockoPhase.WAITING_OPPONENT && state.currentRound == 1 ->
+                "sk_r1bonus" to mapOf("r1Score" to 0L, "showSolution" to false)
+            state.phase == SkockoPhase.OPPONENT_BONUS_R1 && state.currentRound == 1 ->
+                "sk_r2" to mapOf(
+                    "r1Bonus" to 0L, "showSolution" to false,
+                    "solutionSymbols" to emptyList<Long>(), "r2Attempts" to emptyList<Any>()
+                )
+            state.phase == SkockoPhase.WAITING_OPPONENT && state.currentRound == 2 ->
+                "sk_r2bonus" to mapOf("r2Score" to 0L, "showSolution" to false)
+            else ->
+                "sk_done" to mapOf("r2Bonus" to 0L, "showSolution" to false, "solutionSymbols" to emptyList<Long>())
+        }
+        if (!forcedWrites.add(targetPhase)) return
+        timerJob?.cancel(); opponentJob?.cancel()
+        viewModelScope.launch {
+            runCatching { mpRepo.setPhaseAndData(sessionId, targetPhase, dataMap) }
         }
     }
 
@@ -659,7 +743,7 @@ class SkockoViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        timerJob?.cancel(); opponentJob?.cancel(); mpListener?.remove()
+        timerJob?.cancel(); opponentJob?.cancel(); mpListener?.remove(); forfeitListener?.remove()
     }
 }
 

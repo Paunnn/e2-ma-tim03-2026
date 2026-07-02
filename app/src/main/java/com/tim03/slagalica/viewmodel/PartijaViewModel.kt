@@ -28,7 +28,8 @@ data class PartijaUiState(
     val resultSaved: Boolean = false,
     val waitingForOpponent: Boolean = false,
     val forfeitWon: Boolean = false,
-    val forfeitLoss: Boolean = false
+    val forfeitLoss: Boolean = false,
+    val opponentLeft: Boolean = false
 )
 
 class PartijaViewModel(
@@ -86,15 +87,36 @@ class PartijaViewModel(
             val oppName = if (isPlayer1) session.player2Name else session.player1Name
 
             if (session.status == "forfeited" && session.forfeitedBy.isNotEmpty()) {
-                val opponentForfeited = (isPlayer1 && session.forfeitedBy == "player2") ||
-                                        (!isPlayer1 && session.forfeitedBy == "player1")
-                _uiState.value = s.copy(
-                    isComplete = true,
-                    waitingForOpponent = false,
-                    opponentName = oppName,
-                    forfeitWon = opponentForfeited,
-                    forfeitLoss = !opponentForfeited
-                )
+                val iForfeited = (isPlayer1 && session.forfeitedBy == "player1") ||
+                                  (!isPlayer1 && session.forfeitedBy == "player2")
+                if (iForfeited) {
+                    // My own forfeit() already set this locally; keep it in sync either way.
+                    _uiState.value = s.copy(
+                        isComplete = true,
+                        waitingForOpponent = false,
+                        opponentName = oppName,
+                        forfeitLoss = true
+                    )
+                    return@listenToSession
+                }
+                // Opponent left - I keep playing the partija; just stop waiting on scores
+                // that will never arrive and skip straight to the next game.
+                if (s.opponentLeft) {
+                    _uiState.value = s.copy(opponentName = oppName)
+                    return@listenToSession
+                }
+                if (s.waitingForOpponent) {
+                    val nextIndex = s.currentGameIndex + 1
+                    _uiState.value = if (nextIndex >= GAME_ORDER.size) {
+                        s.copy(isComplete = true, waitingForOpponent = false, opponentName = oppName,
+                               opponentLeft = true, forfeitWon = true)
+                    } else {
+                        s.copy(currentGameIndex = nextIndex, waitingForOpponent = false,
+                               opponentName = oppName, opponentLeft = true)
+                    }
+                } else {
+                    _uiState.value = s.copy(opponentName = oppName, opponentLeft = true)
+                }
                 return@listenToSession
             }
 
@@ -136,7 +158,17 @@ class PartijaViewModel(
         val s = _uiState.value
         if (isMultiplayer) {
             val newMy = s.myTotal + myScore
-            _uiState.value = s.copy(myTotal = newMy, waitingForOpponent = true)
+            if (s.opponentLeft) {
+                // Opponent is gone - no score will ever arrive for them, so don't wait.
+                val nextIndex = s.currentGameIndex + 1
+                _uiState.value = if (nextIndex >= GAME_ORDER.size) {
+                    s.copy(myTotal = newMy, isComplete = true, forfeitWon = true)
+                } else {
+                    s.copy(currentGameIndex = nextIndex, myTotal = newMy)
+                }
+            } else {
+                _uiState.value = s.copy(myTotal = newMy, waitingForOpponent = true)
+            }
             viewModelScope.launch {
                 runCatching {
                     sessionRepo.submitGameScore(sessionId, isPlayer1, s.currentGameIndex, myScore)

@@ -12,6 +12,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.firestore.ListenerRegistration
 import com.tim03.slagalica.data.repository.MultiplayerGameRepository
+import com.tim03.slagalica.data.repository.PartijaSessionRepository
 import com.tim03.slagalica.data.repository.UserRepository
 import com.tim03.slagalica.util.evalExpression
 import com.tim03.slagalica.util.removeLastToken
@@ -61,7 +62,8 @@ class MojBrojViewModel @JvmOverloads constructor(
     private val isPlayer1: Boolean = true,
     private val gameIdx: Int = -1,
     private val userRepo: UserRepository = UserRepository(),
-    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository()
+    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
+    private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository()
 ) : AndroidViewModel(application) {
 
     val isMultiplayer = sessionId.isNotEmpty()
@@ -78,6 +80,10 @@ class MojBrojViewModel @JvmOverloads constructor(
     private var timerJob: Job? = null
     private var stopWindowJob: Job? = null
     private var mpListener: ListenerRegistration? = null
+    private var forfeitListener: ListenerRegistration? = null
+    private var opponentForfeited = false
+    // Firestore phases already force-written on the absent opponent's behalf.
+    private val forcedWrites = mutableSetOf<String>()
     private var lastHandledPhase = ""
 
     // Cached game data (set when mb_r1_s1 fires)
@@ -114,13 +120,75 @@ class MojBrojViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
         }
+        if (isMultiplayer) {
+            forfeitListener = sessionRepo.listenToForfeit(sessionId) { forfeitedByPlayer1 ->
+                if (forfeitedByPlayer1 != isPlayer1) {
+                    opponentForfeited = true
+                    checkAndForceIfStuck()
+                }
+            }
+        }
+    }
+
+    // If the opponent leaves, two things can get me permanently stuck:
+    // 1) They were the round's fixed "stop controller" and never pressed STOP.
+    // 2) They were the round's fixed "result writer" and never submitted, so the
+    //    both-submitted transition never fires.
+    // Bypass both once the opponent is confirmed gone, and shorten the wait to a beat.
+    private fun checkAndForceIfStuck() {
+        if (!opponentForfeited) return
+        val state = _uiState.value
+        if (state.phase == MojBrojPhase.GAME_OVER) return
+        when (state.phase) {
+            MojBrojPhase.WAITING_STOP1 -> forceStopIfNotController(state, "mb_r1_s2", "mb_r2_s2")
+            MojBrojPhase.WAITING_STOP2 -> forceStopIfNotController(state, "mb_r1_play", "mb_r2_play")
+            MojBrojPhase.SUBMITTED -> forceRoundTransitionDueToForfeit(state)
+            else -> {}
+        }
+    }
+
+    private fun forceStopIfNotController(state: MojBrojUiState, round1Next: String, round2Next: String) {
+        val isController = (state.currentRound == 1 && isPlayer1) || (state.currentRound == 2 && !isPlayer1)
+        if (isController) return
+        val next = if (state.currentRound == 1) round1Next else round2Next
+        if (!forcedWrites.add(next)) return
+        stopWindowJob?.cancel()
+        viewModelScope.launch { mpRepo.setPhase(sessionId, next) }
+    }
+
+    private fun forceRoundTransitionDueToForfeit(state: MojBrojUiState) {
+        if (state.currentRound == 1) {
+            if (r1TransitionDone) return
+            r1TransitionDone = true
+            val myResult = state.myRoundResult
+            val p1Result = if (isPlayer1) myResult else null
+            val p2Result = if (isPlayer1) null else myResult
+            val score = computeMpRoundScore(mpR1Target, p1Result, p2Result, true)
+            val myPts  = if (isPlayer1) score.first else score.second
+            val oppPts = if (isPlayer1) score.second else score.first
+            _uiState.value = _uiState.value.copy(myScore = myPts, opponentScore = oppPts, roundResultMessage = score.third)
+            viewModelScope.launch { delay(500L); mpRepo.setPhase(sessionId, "mb_r2_s1") }
+        } else {
+            if (r2TransitionDone) return
+            r2TransitionDone = true
+            viewModelScope.launch { delay(500L); mpRepo.setPhase(sessionId, "mb_done") }
+        }
     }
 
     // ─── Multiplayer flow ───
 
+    // Normally P1 always sets up each mini-game. But if P1 forfeited the partija before
+    // this game was ever reached, nobody else would - so P2 must take over as initializer.
+    private suspend fun isFallbackInitializer(): Boolean {
+        if (isPlayer1) return false
+        val session = sessionRepo.getSession(sessionId) ?: return false
+        return session.status == "forfeited" && session.forfeitedBy == "player1"
+    }
+
     private fun startMultiplayerGame() {
         viewModelScope.launch {
-            if (isPlayer1) {
+            if (isPlayer1 || isFallbackInitializer()) {
+                if (!isPlayer1) opponentForfeited = true
                 val r1Target = generateTarget(); val r1Nums = generateNumbers()
                 val r2Target = generateTarget(); val r2Nums = generateNumbers()
                 mpR1Target = r1Target; mpR1Nums = r1Nums
@@ -151,6 +219,9 @@ class MojBrojViewModel @JvmOverloads constructor(
             } else {
                 handleMpLiveUpdate(phase, data)
             }
+            // Re-check after every state change: a forced transition lands me in the NEXT
+            // waiting phase, which must also be skipped - the absent opponent never writes.
+            if (opponentForfeited) checkAndForceIfStuck()
         }
     }
 
@@ -172,6 +243,7 @@ class MojBrojViewModel @JvmOverloads constructor(
                     timeLeft = 60,
                     waitingMessage = if (!isPlayer1) "Protivnik pokreće igru..." else null
                 )
+                checkAndForceIfStuck()
             }
             "mb_r1_s2" -> {
                 timerJob?.cancel(); stopWindowJob?.cancel()
@@ -182,6 +254,7 @@ class MojBrojViewModel @JvmOverloads constructor(
                 )
                 // Only P1 (stop controller in R1) runs the 5-second auto-reveal countdown.
                 if (isPlayer1) startStopCountdown("mb_r1_play")
+                checkAndForceIfStuck()
             }
             "mb_r1_play" -> {
                 timerJob?.cancel(); stopWindowJob?.cancel()
@@ -207,6 +280,7 @@ class MojBrojViewModel @JvmOverloads constructor(
                     roundResultMessage = prev.roundResultMessage, // show R1 result while waiting
                     waitingMessage = if (isPlayer1) "Protivnik pokreće rundu 2..." else null
                 )
+                checkAndForceIfStuck()
             }
             "mb_r2_s2" -> {
                 timerJob?.cancel(); stopWindowJob?.cancel()
@@ -217,6 +291,7 @@ class MojBrojViewModel @JvmOverloads constructor(
                 )
                 // Only P2 (stop controller in R2) runs the 5-second auto-reveal countdown.
                 if (!isPlayer1) startStopCountdown("mb_r2_play")
+                checkAndForceIfStuck()
             }
             "mb_r2_play" -> {
                 timerJob?.cancel(); stopWindowJob?.cancel()
@@ -551,6 +626,7 @@ class MojBrojViewModel @JvmOverloads constructor(
             else                                   -> "r2P2"
         }
         mpRepo.updateGameData(sessionId, mapOf(key to resultVal))
+        checkAndForceIfStuck()
     }
 
     // ─── Scoring ───
@@ -643,7 +719,7 @@ class MojBrojViewModel @JvmOverloads constructor(
     override fun onCleared() {
         super.onCleared()
         sensorManager.unregisterListener(shakeListener)
-        timerJob?.cancel(); stopWindowJob?.cancel(); mpListener?.remove()
+        timerJob?.cancel(); stopWindowJob?.cancel(); mpListener?.remove(); forfeitListener?.remove()
     }
 
     companion object {

@@ -1,11 +1,13 @@
 package com.tim03.slagalica.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.firestore.ListenerRegistration
 import com.tim03.slagalica.data.model.SpojniceQuestion
 import com.tim03.slagalica.data.repository.MultiplayerGameRepository
+import com.tim03.slagalica.data.repository.PartijaSessionRepository
 import com.tim03.slagalica.data.repository.SpojniceRepository
 import com.tim03.slagalica.data.repository.UserRepository
 import kotlinx.coroutines.Job
@@ -49,7 +51,8 @@ class SpojniceViewModel(
     private val gameIdx: Int = -1,
     private val roundRepo: SpojniceRepository = SpojniceRepository(),
     private val userRepo: UserRepository = UserRepository(),
-    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository()
+    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
+    private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository()
 ) : ViewModel() {
 
     val isMultiplayer = sessionId.isNotEmpty()
@@ -63,6 +66,11 @@ class SpojniceViewModel(
     private var timerJob: Job? = null
     private var opponentJob: Job? = null
     private var mpListener: ListenerRegistration? = null
+    private var forfeitListener: ListenerRegistration? = null
+    private var opponentForfeited = false
+    // Firestore phases we've already force-written on the absent opponent's behalf,
+    // so repeated snapshots can't double-write the same transition.
+    private val forcedWrites = mutableSetOf<String>()
     private var lastHandledPhase = ""
 
     private var totalConnected = 0; private var totalPairs = 0
@@ -110,6 +118,22 @@ class SpojniceViewModel(
         viewModelScope.launch {
             runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
         }
+        if (isMultiplayer) {
+            forfeitListener = sessionRepo.listenToForfeit(sessionId) { forfeitedByPlayer1 ->
+                if (forfeitedByPlayer1 != isPlayer1) {
+                    opponentForfeited = true
+                    forceOpponentTurnEndDueToForfeit()
+                }
+            }
+        }
+    }
+
+    // Normally P1 always sets up each mini-game. But if P1 forfeited the partija before
+    // this game was ever reached, nobody else would - so P2 must take over as initializer.
+    private suspend fun isFallbackInitializer(): Boolean {
+        if (isPlayer1) return false
+        val session = sessionRepo.getSession(sessionId) ?: return false
+        return session.status == "forfeited" && session.forfeitedBy == "player1"
     }
 
     private fun loadRounds() {
@@ -136,6 +160,31 @@ class SpojniceViewModel(
                     _uiState.value = SpojniceUiState(isLoading = false, rounds = rounds)
                     startPhase(SpojnicePhase.R1_ME, rounds)
                     listenForMpPhase()
+                } else if (isMultiplayer && !isPlayer1 && isFallbackInitializer()) {
+                    // P1 is gone - I set up the round myself, then immediately treat their
+                    // never-going-to-happen R1_ME turn as forfeited (0 points) so I can play.
+                    val rounds = roundRepo.getRounds(2)
+                    mpRepo.initGame(sessionId, gameIdx, "sp_r1",
+                        mapOf(
+                            "type" to "sp",
+                            "r1Id" to rounds[0].id,
+                            "r2Id" to (rounds.getOrNull(1)?.id ?: ""),
+                            "r1P1Correct" to emptyList<Long>(), "r1P1Score" to 0L,
+                            "r1P2Correct" to emptyList<Long>(), "r1P2Score" to 0L,
+                            "r2P2Correct" to emptyList<Long>(), "r2P2Score" to 0L,
+                            "r2P1Correct" to emptyList<Long>(), "r2P1Score" to 0L,
+                            "r1Conns" to emptyMap<String, Long>(),
+                            "r1BonusConns" to emptyMap<String, Long>(),
+                            "r2Conns" to emptyMap<String, Long>(),
+                            "r2BonusConns" to emptyMap<String, Long>()
+                        )
+                    )
+                    _uiState.value = SpojniceUiState(
+                        isLoading = false, rounds = rounds,
+                        phase = SpojnicePhase.R1_ME, isMyActiveTurn = false, timeLeft = 30
+                    )
+                    listenForMpPhase()
+                    forceOpponentTurnEndDueToForfeit()
                 } else if (isMultiplayer && !isPlayer1) {
                     _uiState.value = SpojniceUiState(isLoading = true)
                     listenForMpPhase()
@@ -163,6 +212,10 @@ class SpojniceViewModel(
                 // Same phase: update live connection display for the watching player.
                 handleMpLiveUpdate(phase, data)
             }
+            // Re-check after every state change: each forced transition lands me in the
+            // NEXT waiting phase, which must be skipped too - the absent opponent never
+            // generates snapshots of their own, so this is the only reliable trigger.
+            if (opponentForfeited) forceOpponentTurnEndDueToForfeit()
         }
     }
 
@@ -220,6 +273,8 @@ class SpojniceViewModel(
                             timeLeft = 30
                         )
                         startWaitingTimer()
+                        // The forfeit may have arrived while rounds were still loading.
+                        if (opponentForfeited) forceOpponentTurnEndDueToForfeit()
                     }
                 }
             }
@@ -544,6 +599,40 @@ class SpojniceViewModel(
         }
     }
 
+    // ─── Opponent forfeit ───
+    // If the opponent leaves the partija while I'm the one watching their turn, they'll
+    // never write the phase transition themselves. Write it on their behalf, crediting
+    // them 0 for the abandoned turn, so I can continue immediately instead of sitting
+    // through the waiting countdown.
+    private fun forceOpponentTurnEndDueToForfeit() {
+        val state = _uiState.value
+        if (state.gameOver || state.isLoading) return
+        // R1_ME/R2_ME always belong to P1, R1_OPP/R2_OPP always belong to P2 - this is fixed
+        // by phase, unlike isMyActiveTurn, which is briefly (and misleadingly) set to false
+        // as a local placeholder while P2 hands off from R1_OPP straight into R2_OPP (both
+        // their own turns) waiting for the Firestore round-trip to confirm it.
+        val activeIsPlayer1 = state.phase == SpojnicePhase.R1_ME || state.phase == SpojnicePhase.R2_ME
+        if (activeIsPlayer1 == isPlayer1) return
+        val (targetPhase, dataMap) = when (state.phase) {
+            SpojnicePhase.R1_ME -> "sp_r1bonus" to
+                mapOf("r1P1Correct" to emptyList<Long>(), "r1P1Score" to 0L)
+            SpojnicePhase.R1_OPP -> "sp_r2" to
+                mapOf("r1P2Correct" to emptyList<Long>(), "r1P2Score" to 0L)
+            SpojnicePhase.R2_OPP -> "sp_r2bonus" to
+                mapOf("r2P2Correct" to emptyList<Long>(), "r2P2Score" to 0L)
+            SpojnicePhase.R2_ME -> "sp_done" to
+                mapOf("r2P1Correct" to emptyList<Long>(), "r2P1Score" to 0L)
+            else -> return
+        }
+        if (!forcedWrites.add(targetPhase)) return
+        Log.d("PartijaDbg", "Spojnice: skipping absent opponent's ${state.phase}, writing $targetPhase")
+        timerJob?.cancel(); opponentJob?.cancel()
+        viewModelScope.launch {
+            runCatching { mpRepo.setPhaseAndData(sessionId, targetPhase, dataMap) }
+                .onFailure { Log.e("PartijaDbg", "Spojnice: forced write $targetPhase FAILED", it) }
+        }
+    }
+
     // ─── Player click handler ───
 
     fun connectItem(leftIdx: Int, rightIdx: Int) {
@@ -613,7 +702,7 @@ class SpojniceViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        timerJob?.cancel(); opponentJob?.cancel(); mpListener?.remove()
+        timerJob?.cancel(); opponentJob?.cancel(); mpListener?.remove(); forfeitListener?.remove()
     }
 }
 

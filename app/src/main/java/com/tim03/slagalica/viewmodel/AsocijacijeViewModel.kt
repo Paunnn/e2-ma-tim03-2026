@@ -8,6 +8,7 @@ import com.tim03.slagalica.data.model.AsocijacijeQuestion
 import com.tim03.slagalica.data.model.ColumnData
 import com.tim03.slagalica.data.repository.AsocijacijeRepository
 import com.tim03.slagalica.data.repository.MultiplayerGameRepository
+import com.tim03.slagalica.data.repository.PartijaSessionRepository
 import com.tim03.slagalica.data.repository.UserRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -43,7 +44,8 @@ class AsocijacijeViewModel(
     private val gameIdx: Int = -1,
     private val repo: AsocijacijeRepository = AsocijacijeRepository(),
     private val userRepo: UserRepository = UserRepository(),
-    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository()
+    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
+    private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository()
 ) : ViewModel() {
 
     val isMultiplayer = sessionId.isNotEmpty()
@@ -57,6 +59,8 @@ class AsocijacijeViewModel(
     private var timerJob: Job? = null
     private var opponentJob: Job? = null
     private var mpListener: ListenerRegistration? = null
+    private var forfeitListener: ListenerRegistration? = null
+    private var opponentForfeited = false
     private var lastHandledPhase = ""
     private var lastGameData: Map<String, Any> = emptyMap()
 
@@ -77,6 +81,29 @@ class AsocijacijeViewModel(
         viewModelScope.launch {
             runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
         }
+        if (isMultiplayer) {
+            forfeitListener = sessionRepo.listenToForfeit(sessionId) { forfeitedByPlayer1 ->
+                if (forfeitedByPlayer1 != isPlayer1) onOpponentForfeited()
+            }
+        }
+    }
+
+    // If the opponent leaves, their turns are simply skipped: whenever the turn lands on
+    // them, reclaim it immediately so the remaining player keeps playing without waiting.
+    // (The isWriter override in onTimerExpired separately covers the round transition,
+    // since the designated writer role may have belonged to the player who left.)
+    private fun onOpponentForfeited() {
+        opponentForfeited = true
+        reclaimTurnFromAbsentOpponent()
+    }
+
+    private fun reclaimTurnFromAbsentOpponent() {
+        val state = _uiState.value
+        if (state.phase != AsocijacijePhase.OPPONENT_TURN) return
+        _uiState.value = state.copy(
+            phase = AsocijacijePhase.MY_TURN, isMyTurn = true, hasRevealedThisTurn = false
+        )
+        mpRepo.updateGameData(sessionId, mapOf("activePlayer" to if (isPlayer1) 1L else 2L))
     }
 
     private fun loadGame() {
@@ -97,6 +124,14 @@ class AsocijacijeViewModel(
     // P1 opens first in R1; P2 opens first in R2.
     // Whoever guesses the final answer in a round scores: 31 – openedFields.size.
     // Phases: as_r1 → as_r2 → as_done
+
+    // Normally P1 always sets up each mini-game. But if P1 forfeited the partija before
+    // this game was ever reached, nobody else would - so P2 must take over as initializer.
+    private suspend fun isFallbackInitializer(): Boolean {
+        if (isPlayer1) return false
+        val session = sessionRepo.getSession(sessionId) ?: return false
+        return session.status == "forfeited" && session.forfeitedBy == "player1"
+    }
 
     private suspend fun loadMultiplayerGame() {
         if (isPlayer1) {
@@ -125,8 +160,39 @@ class AsocijacijeViewModel(
                 timeLeft = 120
             )
             startTimer(120)
+            listenForMultiplayerPhase()
+        } else if (isFallbackInitializer()) {
+            // P1 is gone - I set up round 1 myself, then immediately treat their
+            // never-going-to-happen turn as forfeited so I can play.
+            val (q1, q2) = repo.getTwoRandomQuestions()
+            round1Question = q1 ?: fallbackQuestion(1)
+            round2Question = q2 ?: fallbackQuestion(2)
+            mpRepo.initGame(
+                sessionId, gameIdx, "as_r1",
+                mapOf(
+                    "type" to "as",
+                    "q1Id" to (round1Question!!.id),
+                    "q2Id" to (round2Question!!.id),
+                    "activePlayer" to 1L,
+                    "openedFields" to emptyList<Long>(),
+                    "solvedColumns" to emptyList<Long>(),
+                    "finalSolved" to false,
+                    "revealAll" to false,
+                    "r1P1Score" to 0L, "r1P2Score" to 0L,
+                    "r2P1Score" to 0L, "r2P2Score" to 0L
+                )
+            )
+            _uiState.value = AsocijacijeUiState(
+                phase = AsocijacijePhase.OPPONENT_TURN,
+                currentQuestion = round1Question,
+                isMyTurn = false,
+                timeLeft = 120
+            )
+            listenForMultiplayerPhase()
+            onOpponentForfeited()
+        } else {
+            listenForMultiplayerPhase()
         }
-        listenForMultiplayerPhase()
     }
 
     private fun listenForMultiplayerPhase() {
@@ -140,6 +206,9 @@ class AsocijacijeViewModel(
             } else {
                 handleMpLiveUpdate(data)
             }
+            // If the turn just landed on the absent opponent (wrong guess, pass, or a new
+            // round starting on their turn), take it right back.
+            if (opponentForfeited) reclaimTurnFromAbsentOpponent()
         }
     }
 
@@ -256,7 +325,7 @@ class AsocijacijeViewModel(
             val round = _uiState.value.currentRound
             if (isMultiplayer) {
                 // Designated writer: P1 for R1, P2 for R2.
-                val isWriter = (round == 1 && isPlayer1) || (round == 2 && !isPlayer1)
+                val isWriter = (round == 1 && isPlayer1) || (round == 2 && !isPlayer1) || opponentForfeited
                 val transitionDone = if (round == 1) r1TransitionDone else r2TransitionDone
                 if (isWriter && !transitionDone) {
                     val myR = _uiState.value.myScore - (if (round == 2) myBaseScore else 0)
@@ -566,7 +635,7 @@ class AsocijacijeViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        timerJob?.cancel(); opponentJob?.cancel(); mpListener?.remove()
+        timerJob?.cancel(); opponentJob?.cancel(); mpListener?.remove(); forfeitListener?.remove()
     }
 }
 

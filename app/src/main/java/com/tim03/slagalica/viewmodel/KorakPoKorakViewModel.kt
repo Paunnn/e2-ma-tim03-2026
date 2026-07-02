@@ -7,6 +7,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.tim03.slagalica.data.model.KorakPoKorakQuestion
 import com.tim03.slagalica.data.repository.KorakPoKorakRepository
 import com.tim03.slagalica.data.repository.MultiplayerGameRepository
+import com.tim03.slagalica.data.repository.PartijaSessionRepository
 import com.tim03.slagalica.data.repository.UserRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -43,7 +44,8 @@ class KorakPoKorakViewModel(
     private val gameIdx: Int = -1,
     private val repo: KorakPoKorakRepository = KorakPoKorakRepository(),
     private val userRepo: UserRepository = UserRepository(),
-    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository()
+    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
+    private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository()
 ) : ViewModel() {
 
     val isMultiplayer = sessionId.isNotEmpty()
@@ -57,6 +59,10 @@ class KorakPoKorakViewModel(
     private var timerJob: Job? = null
     private var opponentJob: Job? = null
     private var mpListener: ListenerRegistration? = null
+    private var forfeitListener: ListenerRegistration? = null
+    private var opponentForfeited = false
+    // Firestore phases already force-written on the absent opponent's behalf.
+    private val forcedWrites = mutableSetOf<String>()
 
     private var currentQuestion: KorakPoKorakQuestion? = null
     private var round2Question: KorakPoKorakQuestion? = null
@@ -69,6 +75,14 @@ class KorakPoKorakViewModel(
         loadGame()
         viewModelScope.launch {
             runCatching { userRepo.getCurrentUser()?.username?.also { _username.value = it } }
+        }
+        if (isMultiplayer) {
+            forfeitListener = sessionRepo.listenToForfeit(sessionId) { forfeitedByPlayer1 ->
+                if (forfeitedByPlayer1 != isPlayer1) {
+                    opponentForfeited = true
+                    forceOpponentTurnEndDueToForfeit()
+                }
+            }
         }
     }
 
@@ -91,6 +105,14 @@ class KorakPoKorakViewModel(
         }
     }
 
+    // Normally P1 always sets up each mini-game. But if P1 forfeited the partija before
+    // this game was ever reached, nobody else would - so P2 must take over as initializer.
+    private suspend fun isFallbackInitializer(): Boolean {
+        if (isPlayer1) return false
+        val session = sessionRepo.getSession(sessionId) ?: return false
+        return session.status == "forfeited" && session.forfeitedBy == "player1"
+    }
+
     private fun loadMultiplayerGame() {
         viewModelScope.launch {
             _uiState.value = KorakPoKorakUiState(isLoading = true)
@@ -108,8 +130,28 @@ class KorakPoKorakViewModel(
                     isLoading = false, question = q1, phase = KorakPoKorakPhase.MY_TURN
                 )
                 startMyTurnTimer()
+                listenForMultiplayerPhase()
+            } else if (isFallbackInitializer()) {
+                // P1 is gone - I set up round 1 myself, then immediately treat their
+                // never-going-to-happen turn as forfeited (0 points) so I can play.
+                val (q1, q2) = repo.getTwoQuestions()
+                currentQuestion = q1
+                round2Question = q2
+                mpRepo.initGame(
+                    sessionId, gameIdx, "kpk_r1",
+                    mapOf("type" to "kpk", "q1Id" to q1.id, "q2Id" to q2.id,
+                          "r1Score" to -1L, "r1Bonus" to 0L,
+                          "r2Score" to -1L, "r2Bonus" to 0L)
+                )
+                _uiState.value = KorakPoKorakUiState(
+                    isLoading = false, question = q1,
+                    phase = KorakPoKorakPhase.WAITING_OPPONENT, currentRound = 1, timeLeft = 70
+                )
+                listenForMultiplayerPhase()
+                forceOpponentTurnEndDueToForfeit()
+            } else {
+                listenForMultiplayerPhase()
             }
-            listenForMultiplayerPhase()
         }
     }
 
@@ -124,6 +166,9 @@ class KorakPoKorakViewModel(
             } else {
                 handleMpLiveUpdate(data)
             }
+            // Re-check after every state change: a forced transition lands me in the NEXT
+            // waiting phase, which must also be skipped - the absent opponent never writes.
+            if (opponentForfeited) forceOpponentTurnEndDueToForfeit()
         }
     }
 
@@ -164,6 +209,8 @@ class KorakPoKorakViewModel(
                             phase = KorakPoKorakPhase.WAITING_OPPONENT, timeLeft = 70
                         )
                         startWaitingTimer(70)
+                        // The forfeit may have arrived while questions were still loading.
+                        if (opponentForfeited) forceOpponentTurnEndDueToForfeit()
                     }
                 }
             }
@@ -361,6 +408,31 @@ class KorakPoKorakViewModel(
                     endGame()
                 }
             }
+        }
+    }
+
+    // ─── Opponent forfeit ───
+    // While I'm waiting on the opponent's turn or their bonus attempt, they'll never write
+    // the phase transition if they've left. Write it myself, crediting them 0, so I can
+    // continue right away instead of sitting through the waiting countdown.
+    private fun forceOpponentTurnEndDueToForfeit() {
+        val state = _uiState.value
+        if (state.phase == KorakPoKorakPhase.GAME_OVER) return
+        if (state.phase != KorakPoKorakPhase.WAITING_OPPONENT && state.phase != KorakPoKorakPhase.OPPONENT_BONUS) return
+        val (targetPhase, dataMap) = when {
+            state.phase == KorakPoKorakPhase.WAITING_OPPONENT && state.currentRound == 1 ->
+                "kpk_r1bonus" to mapOf("r1Score" to 0L)
+            state.phase == KorakPoKorakPhase.OPPONENT_BONUS && state.currentRound == 1 ->
+                "kpk_r2" to mapOf("r1Bonus" to 0L, "revealedSteps" to 1L, "showAnswer" to false, "timeLeft" to 70L)
+            state.phase == KorakPoKorakPhase.WAITING_OPPONENT && state.currentRound == 2 ->
+                "kpk_r2bonus" to mapOf("r2Score" to 0L)
+            else ->
+                "kpk_done" to mapOf("r2Bonus" to 0L)
+        }
+        if (!forcedWrites.add(targetPhase)) return
+        timerJob?.cancel(); opponentJob?.cancel()
+        viewModelScope.launch {
+            runCatching { mpRepo.setPhaseAndData(sessionId, targetPhase, dataMap) }
         }
     }
 
@@ -580,6 +652,7 @@ class KorakPoKorakViewModel(
         timerJob?.cancel()
         opponentJob?.cancel()
         mpListener?.remove()
+        forfeitListener?.remove()
     }
 }
 

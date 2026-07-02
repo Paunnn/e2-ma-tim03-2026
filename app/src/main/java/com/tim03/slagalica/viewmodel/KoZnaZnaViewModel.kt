@@ -7,6 +7,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.tim03.slagalica.data.model.KoZnaZnaQuestion
 import com.tim03.slagalica.data.repository.KoZnaZnaRepository
 import com.tim03.slagalica.data.repository.MultiplayerGameRepository
+import com.tim03.slagalica.data.repository.PartijaSessionRepository
 import com.tim03.slagalica.data.repository.UserRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -38,7 +39,8 @@ class KoZnaZnaViewModel(
     private val gameIdx: Int = -1,
     private val questionRepo: KoZnaZnaRepository = KoZnaZnaRepository(),
     private val userRepo: UserRepository = UserRepository(),
-    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository()
+    private val mpRepo: MultiplayerGameRepository = MultiplayerGameRepository(),
+    private val sessionRepo: PartijaSessionRepository = PartijaSessionRepository()
 ) : ViewModel() {
 
     val isMultiplayer = sessionId.isNotEmpty()
@@ -65,10 +67,18 @@ class KoZnaZnaViewModel(
         }
     }
 
+    // Normally P1 always sets up each mini-game. But if P1 forfeited the partija before
+    // this game was ever reached, nobody else would - so P2 must take over as initializer.
+    private suspend fun isFallbackInitializer(): Boolean {
+        if (isPlayer1) return false
+        val session = sessionRepo.getSession(sessionId) ?: return false
+        return session.status == "forfeited" && session.forfeitedBy == "player1"
+    }
+
     private fun loadQuestions() {
         viewModelScope.launch {
             try {
-                if (isMultiplayer && isPlayer1) {
+                if (isMultiplayer && (isPlayer1 || isFallbackInitializer())) {
                     val questions = questionRepo.getQuestions(5)
                     _uiState.value = KoZnaZnaUiState(isLoading = false, questions = questions)
                     val ids = questions.map { it.id }
@@ -85,7 +95,7 @@ class KoZnaZnaViewModel(
                     mpRepo.initGame(sessionId, gameIdx, "kzz_playing", dataMap)
                     listenForMpAnswers()
                     startQuestion(0)
-                } else if (isMultiplayer && !isPlayer1) {
+                } else if (isMultiplayer) {
                     _uiState.value = KoZnaZnaUiState(isLoading = true)
                     listenForMpAnswers()
                 } else {
