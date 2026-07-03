@@ -33,13 +33,14 @@ fun TurnirScreen(
     onExit: () -> Unit
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
-    var hasJoined by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.phase, state.mySessionId) {
-        if (state.mySessionId.isNotEmpty() && state.phase == TurnirPhase.SEMI_FINAL) {
-            onNavigateToPartija(state.mySessionId, state.myIsPlayer1, true, false)
-        } else if (state.mySessionId.isNotEmpty() && state.phase == TurnirPhase.FINAL) {
-            onNavigateToPartija(state.mySessionId, state.myIsPlayer1, true, true)
+        val sessionId = state.mySessionId
+        val playing = state.phase == TurnirPhase.SEMI_FINAL || state.phase == TurnirPhase.FINAL
+        // markNavigated keeps this from re-entering a partija that was already played
+        // when the user comes back to this screen after it ends.
+        if (sessionId.isNotEmpty() && playing && vm.markNavigated(sessionId)) {
+            onNavigateToPartija(sessionId, state.myIsPlayer1, true, state.phase == TurnirPhase.FINAL)
         }
     }
 
@@ -58,7 +59,7 @@ fun TurnirScreen(
         }
 
         when {
-            !hasJoined -> TurnirEntryView(onJoin = { vm.joinTournament(); hasJoined = true })
+            !state.joined -> TurnirEntryView(error = state.error, onJoin = { vm.joinTournament() })
             state.phase == TurnirPhase.WAITING -> WaitingView(state)
             state.phase == TurnirPhase.SEMI_FINAL -> BracketView(state, "Polufinalista")
             state.phase == TurnirPhase.WAITING_FOR_FINAL -> BracketView(state, "Čeka finale...")
@@ -71,7 +72,7 @@ fun TurnirScreen(
 }
 
 @Composable
-private fun TurnirEntryView(onJoin: () -> Unit) {
+private fun TurnirEntryView(error: String?, onJoin: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -106,6 +107,10 @@ private fun TurnirEntryView(onJoin: () -> Unit) {
             Icon(Icons.Default.EmojiEvents, null, tint = Navy, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Text("UĐI U TURNIR (3 ●)", color = Navy, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
+        }
+        if (error != null) {
+            Spacer(Modifier.height(12.dp))
+            Text(error, color = ErrorRed, fontSize = 13.sp, textAlign = TextAlign.Center)
         }
     }
 }

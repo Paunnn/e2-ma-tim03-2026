@@ -32,6 +32,9 @@ data class TurnirUiState(
     val mySessionId: String = "",
     val myIsPlayer1: Boolean = true,
     val queueCount: Int = 1,
+    // Lives in the ViewModel (not the composable) so returning from a partija
+    // doesn't show the join button again for a player already in the tournament.
+    val joined: Boolean = false,
     val error: String? = null
 )
 
@@ -49,9 +52,17 @@ class TurnirViewModel(
     private var queueListener: ListenerRegistration? = null
     private var resultListener: ListenerRegistration? = null
     private var turnirListener: ListenerRegistration? = null
+    private var joining = false
+    private val navigatedSessions = mutableSetOf<String>()
+
+    // Returns true only the first time a session id is seen, so the screen doesn't
+    // re-navigate into an already played partija when it comes back on top.
+    fun markNavigated(sessionId: String): Boolean = navigatedSessions.add(sessionId)
 
     fun joinTournament() {
         val myUid = auth.currentUser?.uid ?: return
+        if (joining || _uiState.value.joined) return
+        joining = true
         _uiState.value = _uiState.value.copy(myUid = myUid)
         viewModelScope.launch {
             runCatching {
@@ -68,9 +79,11 @@ class TurnirViewModel(
                     league = user.league,
                     avatarIndex = user.avatarIndex
                 )
+                _uiState.value = _uiState.value.copy(joined = true)
                 listenToQueue()
                 listenForResult()
             }
+            joining = false
         }
     }
 
@@ -107,17 +120,18 @@ class TurnirViewModel(
             when (session.status) {
                 "semifinal" -> {
                     if (current.phase == TurnirPhase.WAITING) {
-                        val mySemi = if (myUid == session.semi1Player1Uid() || myUid == session.semi1Player2Uid())
-                            session.semi1SessionId else session.semi2SessionId
+                        // The bracket is deterministic: semi 1 is playerUids[0] vs [1],
+                        // semi 2 is [2] vs [3], and player1 of each session is [0] / [2].
+                        val inSemi1 = myUid == session.semi1Player1Uid() || myUid == session.semi1Player2Uid()
+                        val mySemi = if (inSemi1) session.semi1SessionId else session.semi2SessionId
+                        val isP1 = if (inSemi1) myUid == session.semi1Player1Uid()
+                                   else myUid == session.semi2Player1Uid()
                         _uiState.value = current.copy(
                             session = session,
                             phase = TurnirPhase.SEMI_FINAL,
-                            mySessionId = mySemi
+                            mySessionId = mySemi,
+                            myIsPlayer1 = isP1
                         )
-                        viewModelScope.launch {
-                            val isP1 = repo.getSessionIsPlayer1(mySemi, myUid)
-                            _uiState.value = _uiState.value.copy(myIsPlayer1 = isP1)
-                        }
                     }
                 }
                 "final" -> {
@@ -134,20 +148,23 @@ class TurnirViewModel(
                         inFinal -> TurnirPhase.FINAL
                         else -> TurnirPhase.WAITING_FOR_FINAL
                     }
-                    _uiState.value = current.copy(session = session, phase = newPhase)
-                    if (inFinal && newPhase == TurnirPhase.FINAL) {
-                        viewModelScope.launch {
-                            val isP1 = repo.getSessionIsPlayer1(session.finalSessionId, myUid)
-                            _uiState.value = _uiState.value.copy(
-                                mySessionId = session.finalSessionId,
-                                myIsPlayer1 = isP1
-                            )
-                        }
-                    }
+                    // The final session is created with player1 = semi1 winner, so the
+                    // session id and player slot are set together with the phase - the
+                    // screen navigates off a single consistent state.
+                    _uiState.value = current.copy(
+                        session = session,
+                        phase = newPhase,
+                        mySessionId = if (inFinal) session.finalSessionId else current.mySessionId,
+                        myIsPlayer1 = if (inFinal) myUid == session.semi1Winner else current.myIsPlayer1
+                    )
                 }
                 "completed" -> {
                     val won = session.tournamentWinner == myUid
-                    val newPhase = if (won) TurnirPhase.WINNER else TurnirPhase.RUNNER_UP
+                    val newPhase = when {
+                        won -> TurnirPhase.WINNER
+                        current.phase == TurnirPhase.ELIMINATED -> TurnirPhase.ELIMINATED
+                        else -> TurnirPhase.RUNNER_UP
+                    }
                     _uiState.value = current.copy(session = session, phase = newPhase)
                     if (won) {
                         viewModelScope.launch {
@@ -155,51 +172,6 @@ class TurnirViewModel(
                         }
                     }
                 }
-            }
-        }
-    }
-
-    fun onSemiFinalComplete(won: Boolean, myScore: Int, opponentScore: Int) {
-        val session = _uiState.value.session ?: return
-        val myUid = _uiState.value.myUid
-        val winnerUid = if (won) myUid else {
-            val isInSemi1 = myUid == session.semi1Player1Uid() || myUid == session.semi1Player2Uid()
-            if (isInSemi1) {
-                if (myUid == session.semi1Player1Uid()) session.semi1Player2Uid() else session.semi1Player1Uid()
-            } else {
-                if (myUid == session.semi2Player1Uid()) session.semi2Player2Uid() else session.semi2Player1Uid()
-            }
-        }
-        val isInSemi1 = myUid == session.semi1Player1Uid() || myUid == session.semi1Player2Uid()
-        val semiField = if (isInSemi1) "semi1Winner" else "semi2Winner"
-
-        // Award 2 tokens to semi-final winner
-        if (won) {
-            viewModelScope.launch {
-                runCatching {
-                    userRepo.addTokens(myUid, 2)
-                }
-            }
-        }
-
-        viewModelScope.launch {
-            runCatching {
-                repo.reportSemiFinalResult(_uiState.value.turnirId, semiField, winnerUid)
-            }
-        }
-    }
-
-    fun onFinalComplete(won: Boolean) {
-        val turnirId = _uiState.value.turnirId
-        val myUid = _uiState.value.myUid
-        val session = _uiState.value.session ?: return
-        val loserUid = if (won) {
-            session.finalSessionId.let { if (session.semi1Winner == myUid) session.semi2Winner else session.semi1Winner }
-        } else myUid
-
-        if (won) {
-            viewModelScope.launch {
-                runCatching { repo.reportFinalResult(turnirId, myUid, loserUid) }
             }
         }
     }

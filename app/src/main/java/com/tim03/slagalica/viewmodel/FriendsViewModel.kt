@@ -142,6 +142,18 @@ class FriendsViewModel(
                     _uiState.value = _uiState.value.copy(isLoading = false, errorMsg = "Korisnik nije pronađen.")
                     return@runCatching
                 }
+                // Already a friend: just show the result card (labeled "Već ste
+                // prijatelji"), don't fire a request that would report an error.
+                if (_uiState.value.friends.any { it.uid == scannedUid }) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        searchResult = found,
+                        searchDone = true,
+                        requestSent = false,
+                        tab = FriendsTab.SEARCH
+                    )
+                    return@runCatching
+                }
                 val ok = repo.sendFriendRequest(scannedUid)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,

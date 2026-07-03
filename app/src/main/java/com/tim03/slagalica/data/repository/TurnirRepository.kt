@@ -71,10 +71,12 @@ class TurnirRepository {
 
     suspend fun tryCreateTournament(players: List<Map<String, Any>>): String? {
         return try {
-            val uids = players.map { it["uid"] as String }
-            val names = players.map { it["username"] as String }
-            val leagues = players.map { (it["league"] as? Int) ?: 0 }
-            val avatars = players.map { (it["avatarIndex"] as? Int) ?: 0 }
+            // A tournament is exactly 4 players; anyone past the 4th stays in the queue.
+            val four = players.take(4)
+            val uids = four.map { it["uid"] as String }
+            val names = four.map { it["username"] as String }
+            val leagues = four.map { (it["league"] as? Int) ?: 0 }
+            val avatars = four.map { (it["avatarIndex"] as? Int) ?: 0 }
 
             val turnirRef = turnirs.document()
 
@@ -165,58 +167,61 @@ class TurnirRepository {
                 semi1Winner = doc.getString("semi1Winner") ?: "",
                 semi2Winner = doc.getString("semi2Winner") ?: "",
                 tournamentWinner = doc.getString("tournamentWinner") ?: "",
-                createdAt = doc.getLong("createdAt") ?: 0L
+                createdAt = doc.getTimestamp("createdAt")?.toDate()?.time ?: 0L
             )
             onUpdate(session)
         }
     }
 
+    // Runs as a single transaction: both semi winners can report at the same moment,
+    // and exactly one of them creates the final (player1 = semi1 winner).
     suspend fun reportSemiFinalResult(turnirId: String, semiField: String, winnerUid: String) {
-        val turnirDoc = turnirs.document(turnirId).get().await()
-        val semi1Winner = turnirDoc.getString("semi1Winner") ?: ""
-        val semi2Winner = turnirDoc.getString("semi2Winner") ?: ""
+        val turnirRef = turnirs.document(turnirId)
+        val finalRef = sessions.document()
+        db.runTransaction { tx ->
+            val doc = tx.get(turnirRef)
+            val semi1Winner = if (semiField == "semi1Winner") winnerUid else doc.getString("semi1Winner") ?: ""
+            val semi2Winner = if (semiField == "semi2Winner") winnerUid else doc.getString("semi2Winner") ?: ""
+            val finalExists = (doc.getString("finalSessionId") ?: "").isNotEmpty()
 
-        turnirs.document(turnirId).update(semiField, winnerUid).await()
+            val updates = mutableMapOf<String, Any>(semiField to winnerUid)
 
-        val newSemi1 = if (semiField == "semi1Winner") winnerUid else semi1Winner
-        val newSemi2 = if (semiField == "semi2Winner") winnerUid else semi2Winner
-
-        if (newSemi1.isNotEmpty() && newSemi2.isNotEmpty()) {
-            // Both semis done → create final
-            val playerData = turnirDoc.let { doc ->
+            if (semi1Winner.isNotEmpty() && semi2Winner.isNotEmpty() && !finalExists) {
                 val uids = (doc.get("playerUids") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
                 val names = (doc.get("playerNames") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-                uids.zip(names).toMap()
+                val nameByUid = uids.zip(names).toMap()
+                tx.set(finalRef, mapOf(
+                    "player1Uid" to semi1Winner, "player2Uid" to semi2Winner,
+                    "player1Name" to (nameByUid[semi1Winner] ?: "Igrač 1"),
+                    "player2Name" to (nameByUid[semi2Winner] ?: "Igrač 2"),
+                    "playerUids" to listOf(semi1Winner, semi2Winner),
+                    "status" to "active",
+                    "isTournament" to true,
+                    "isFinal" to true,
+                    "turnirId" to turnirId,
+                    "player1GameScores" to mapOf<String, Any>(),
+                    "player2GameScores" to mapOf<String, Any>(),
+                    "createdAt" to FieldValue.serverTimestamp()
+                ))
+                updates["finalSessionId"] = finalRef.id
+                updates["status"] = "final"
             }
-            val finalRef = sessions.document()
-            val p1Name = playerData[newSemi1] ?: "Igrač 1"
-            val p2Name = playerData[newSemi2] ?: "Igrač 2"
-            finalRef.set(mapOf(
-                "player1Uid" to newSemi1, "player2Uid" to newSemi2,
-                "player1Name" to p1Name, "player2Name" to p2Name,
-                "playerUids" to listOf(newSemi1, newSemi2),
-                "status" to "active",
-                "isTournament" to true,
-                "isFinal" to true,
-                "turnirId" to turnirId,
-                "player1GameScores" to mapOf<String, Any>(),
-                "player2GameScores" to mapOf<String, Any>(),
-                "createdAt" to FieldValue.serverTimestamp()
-            )).await()
 
-            turnirs.document(turnirId).update(
-                mapOf(
-                    "finalSessionId" to finalRef.id,
-                    "status" to "final"
-                )
-            ).await()
-        }
+            tx.update(turnirRef, updates)
+        }.await()
     }
 
     suspend fun reportFinalResult(turnirId: String, winnerUid: String, loserUid: String) {
-        turnirs.document(turnirId).update(
-            mapOf("tournamentWinner" to winnerUid, "status" to "completed")
-        ).await()
+        // Both finalists report the result; only the call that flips the status to
+        // "completed" hands out the rewards, so the winner can't be rewarded twice.
+        val shouldReward = db.runTransaction { tx ->
+            val doc = tx.get(turnirs.document(turnirId))
+            if (doc.getString("status") == "completed") return@runTransaction false
+            tx.update(turnirs.document(turnirId),
+                mapOf("tournamentWinner" to winnerUid, "status" to "completed"))
+            true
+        }.await()
+        if (!shouldReward) return
 
         // Winner gets 3 extra tokens + 10 extra stars (on top of regular partija rewards)
         runCatching {
@@ -235,11 +240,6 @@ class TurnirRepository {
                 )
             ).await()
         }
-    }
-
-    suspend fun getSessionIsPlayer1(sessionId: String, myUid: String): Boolean {
-        val doc = sessions.document(sessionId).get().await()
-        return doc.getString("player1Uid") == myUid
     }
 
     suspend fun getTurnirSession(turnirId: String): TurnirSession? {

@@ -250,6 +250,9 @@ class PartijaViewModel(
                         val turnirDoc = turnirRepo.getTurnirSession(sessionTurnirId)
                         val semiField = if (turnirDoc?.semi1SessionId == sessionId) "semi1Winner" else "semi2Winner"
                         runCatching { turnirRepo.reportSemiFinalResult(sessionTurnirId, semiField, winnerUid) }
+                        // Semi-final winner gets 2 tokens (spec 10d); only the winning
+                        // client takes this branch so it can't be awarded twice.
+                        if (won) runCatching { userRepo.addTokens(uid, 2) }
                     }
                 }
             }

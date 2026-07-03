@@ -136,6 +136,7 @@ fun FriendsScreen(
                     },
                     searchResult = state.searchResult,
                     searchDone = state.searchDone,
+                    alreadyFriend = state.friends.any { it.uid == state.searchResult?.uid },
                     requestSent = state.requestSent,
                     isLoading = state.isLoading,
                     errorMsg = state.errorMsg,
@@ -252,6 +253,7 @@ private fun SearchTab(
     onQrScan: () -> Unit,
     searchResult: FriendInfo?,
     searchDone: Boolean,
+    alreadyFriend: Boolean,
     requestSent: Boolean,
     isLoading: Boolean,
     errorMsg: String?,
@@ -331,10 +333,10 @@ private fun SearchTab(
                         Text(searchResult.username, color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text("${searchResult.stars}★ • ${leagueIcon(searchResult.league)} ${leagueName(searchResult.league)}", color = LightGray, fontSize = 12.sp)
                     }
-                    if (requestSent) {
-                        Text("Poslato ✓", color = SuccessGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    } else {
-                        Button(
+                    when {
+                        alreadyFriend -> Text("Već ste prijatelji", color = SuccessGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        requestSent -> Text("Poslato ✓", color = SuccessGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        else -> Button(
                             onClick = { onSendRequest(searchResult.uid) },
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBright)
                         ) {
