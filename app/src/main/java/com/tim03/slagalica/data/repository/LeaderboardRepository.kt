@@ -37,6 +37,8 @@ class LeaderboardRepository {
                 stars = doc.getLong("stars")?.toInt() ?: 0,
                 weeklyStars = doc.getLong("weeklyStars")?.toInt() ?: 0,
                 monthlyStars = doc.getLong("monthlyStars")?.toInt() ?: 0,
+                weeklyGamesPlayed = doc.getLong("weeklyGamesPlayed")?.toInt() ?: 0,
+                monthlyGamesPlayed = doc.getLong("monthlyGamesPlayed")?.toInt() ?: 0,
                 league = doc.getLong("league")?.toInt() ?: 0,
                 avatarIndex = doc.getLong("avatarIndex")?.toInt() ?: 0,
                 region = doc.getString("region") ?: ""
@@ -44,15 +46,19 @@ class LeaderboardRepository {
         }
     }
 
+    // Spec 4a: ranked = played at least one partija this cycle. The gamesPlayed counter
+    // is the real criterion; nonzero cycle stars is a fallback for accounts whose stars
+    // changed this cycle before the counter existed (or via izazov stakes) - a losing
+    // player has NEGATIVE cycle stars and must still appear on the list.
     suspend fun getWeeklyLeaderboard(): List<LeaderboardEntry> =
         fetchAllEntries()
-            .filter { it.weeklyStars > 0 }
+            .filter { it.weeklyGamesPlayed > 0 || it.weeklyStars != 0 }
             .sortedByDescending { it.weeklyStars }
             .mapIndexed { i, e -> e.copy(rank = i + 1) }
 
     suspend fun getMonthlyLeaderboard(): List<LeaderboardEntry> =
         fetchAllEntries()
-            .filter { it.monthlyStars > 0 }
+            .filter { it.monthlyGamesPlayed > 0 || it.monthlyStars != 0 }
             .sortedByDescending { it.monthlyStars }
             .mapIndexed { i, e -> e.copy(rank = i + 1) }
 
@@ -92,7 +98,9 @@ class LeaderboardRepository {
             else -> 0
         }
 
-        val updates = mutableMapOf<String, Any>("lastWeeklyRewardDate" to weekKey, "weeklyStars" to 0)
+        val updates = mutableMapOf<String, Any>(
+            "lastWeeklyRewardDate" to weekKey, "weeklyStars" to 0, "weeklyGamesPlayed" to 0
+        )
         if (tokens > 0) {
             updates["tokens"] = FieldValue.increment(tokens.toLong())
             updates["pendingWeeklyRewardTokens"] = tokens
@@ -127,7 +135,9 @@ class LeaderboardRepository {
             else -> 0
         }
 
-        val updates = mutableMapOf<String, Any>("lastMonthlyRewardDate" to monthKey, "monthlyStars" to 0)
+        val updates = mutableMapOf<String, Any>(
+            "lastMonthlyRewardDate" to monthKey, "monthlyStars" to 0, "monthlyGamesPlayed" to 0
+        )
         if (tokens > 0) {
             updates["tokens"] = FieldValue.increment(tokens.toLong())
             updates["pendingMonthlyRewardTokens"] = tokens
@@ -208,14 +218,16 @@ class LeaderboardRepository {
     suspend fun resetWeeklyStarsForCurrentUser() {
         val uid = auth.currentUser?.uid ?: return
         runCatching {
-            db.collection("users").document(uid).update("weeklyStars", 0).await()
+            db.collection("users").document(uid)
+                .update(mapOf("weeklyStars" to 0, "weeklyGamesPlayed" to 0)).await()
         }
     }
 
     suspend fun resetMonthlyStarsForCurrentUser() {
         val uid = auth.currentUser?.uid ?: return
         runCatching {
-            db.collection("users").document(uid).update("monthlyStars", 0).await()
+            db.collection("users").document(uid)
+                .update(mapOf("monthlyStars" to 0, "monthlyGamesPlayed" to 0)).await()
         }
     }
 

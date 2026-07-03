@@ -158,7 +158,11 @@ class UserRepository {
             "stars" to newStars,
             "league" to newLeague,
             "weeklyStars" to FieldValue.increment(actualDelta.toLong()),
-            "monthlyStars" to FieldValue.increment(actualDelta.toLong())
+            "monthlyStars" to FieldValue.increment(actualDelta.toLong()),
+            // One partija played in both cycles - this is what makes the player ranked
+            // (spec 4a), regardless of whether they won or lost stars.
+            "weeklyGamesPlayed" to FieldValue.increment(1L),
+            "monthlyGamesPlayed" to FieldValue.increment(1L)
         )
         if (tokensFromStars > 0) {
             updates["tokens"] = FieldValue.increment(tokensFromStars.toLong())
@@ -195,7 +199,8 @@ class UserRepository {
         var penaltyApplied = false
         val updates = mutableMapOf<String, Any>(
             "lastMonthlyCheck" to monthYear,
-            "monthlyStars" to 0
+            "monthlyStars" to 0,
+            "monthlyGamesPlayed" to 0
         )
 
         // If user didn't earn any stars this month, apply 30% penalty
@@ -292,8 +297,9 @@ class UserRepository {
 
     suspend fun resetCycleStars(isWeekly: Boolean) {
         val uid = auth.currentUser?.uid ?: return
-        val field = if (isWeekly) "weeklyStars" else "monthlyStars"
-        db.collection("users").document(uid).update(field, 0).await()
+        val updates = if (isWeekly) mapOf("weeklyStars" to 0, "weeklyGamesPlayed" to 0)
+                      else mapOf("monthlyStars" to 0, "monthlyGamesPlayed" to 0)
+        db.collection("users").document(uid).update(updates).await()
     }
 
     suspend fun saveFcmToken(token: String) {

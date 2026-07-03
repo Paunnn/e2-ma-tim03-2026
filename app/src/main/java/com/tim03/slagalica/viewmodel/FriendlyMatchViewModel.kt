@@ -46,6 +46,23 @@ class FriendlyMatchViewModel(
     private var currentInviteId = ""
     private var responseListener: ListenerRegistration? = null
     private var autoRejectJob: Job? = null
+    private var autoInvited = false
+
+    // Opened from the friends list: the friend is already known, so skip the search
+    // and send the invite right away. On a later retry (after a rejection) the friend
+    // stays preselected but the invite is sent only when the user taps the button again.
+    fun preselectFriend(uid: String, name: String) {
+        if (uid.isEmpty()) return
+        val myUid = auth.currentUser?.uid ?: ""
+        if (uid == myUid) return
+        _uiState.value = _uiState.value.copy(
+            foundUid = uid, foundName = name, searchQuery = name, errorMessage = ""
+        )
+        if (!autoInvited) {
+            autoInvited = true
+            sendInvite()
+        }
+    }
 
     fun onSearchQueryChange(q: String) {
         _uiState.value = _uiState.value.copy(searchQuery = q, foundUid = "", foundName = "")

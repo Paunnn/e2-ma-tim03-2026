@@ -217,8 +217,16 @@ fun AppNavigation(navController: NavHostController) {
             )
         }
 
-        composable(Screen.FriendlyMatchmaking.route) {
+        composable(
+            route = Screen.FriendlyMatchmaking.route,
+            arguments = listOf(
+                navArgument("friendUid") { type = NavType.StringType; defaultValue = "" },
+                navArgument("friendName") { type = NavType.StringType; defaultValue = "" }
+            )
+        ) { backStackEntry ->
             FriendlyMatchmakingScreen(
+                friendUid = backStackEntry.arguments?.getString("friendUid") ?: "",
+                friendName = backStackEntry.arguments?.getString("friendName") ?: "",
                 onMatchReady = { sessionId, isPlayer1 ->
                     navController.navigate(Screen.Partija.createRoute(sessionId, isPlayer1)) {
                         popUpTo(Screen.FriendlyMatchmaking.route) { inclusive = true }
@@ -270,8 +278,9 @@ fun AppNavigation(navController: NavHostController) {
                 onLeaderboardClick = { navController.navigate(Screen.Leaderboard.route) },
                 onMapClick = { navController.navigate(Screen.Region.route) { launchSingleTop = true } },
                 onProfileClick = { navController.navigate(Screen.Profile.route) },
-                onStartFriendlyMatch = { _, _ ->
-                    navController.navigate(Screen.FriendlyMatchmaking.route)
+                onStartFriendlyMatch = { uid, name ->
+                    // Preselect the friend - the invite is sent immediately, no manual search.
+                    navController.navigate(Screen.FriendlyMatchmaking.createRoute(uid, name))
                 }
             )
         }

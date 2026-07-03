@@ -6,6 +6,8 @@ data class LeaderboardEntry(
     val stars: Int = 0,
     val weeklyStars: Int = 0,
     val monthlyStars: Int = 0,
+    val weeklyGamesPlayed: Int = 0,
+    val monthlyGamesPlayed: Int = 0,
     val league: Int = 0,
     val avatarIndex: Int = 0,
     val region: String = "",

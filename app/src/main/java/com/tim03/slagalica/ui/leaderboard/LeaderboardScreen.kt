@@ -263,7 +263,7 @@ private fun LeaderboardRow(entry: LeaderboardEntry, isMe: Boolean, cycleStars: I
                     color = White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp
                 )
             }
-            // Name + League
+            // Name + League (icon + name, spec 4b)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     entry.username,
@@ -272,7 +272,8 @@ private fun LeaderboardRow(entry: LeaderboardEntry, isMe: Boolean, cycleStars: I
                     fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    leagueLabel, color = leagueColor, fontSize = 10.sp,
+                    "${com.tim03.slagalica.util.leagueIcon(entry.league)} $leagueLabel",
+                    color = leagueColor, fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             }

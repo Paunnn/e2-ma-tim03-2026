@@ -30,6 +30,9 @@ import com.tim03.slagalica.viewmodel.FriendlyPhase
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendlyMatchmakingScreen(
+    // When set (entered via the friends list), the invite goes straight to this friend.
+    friendUid: String = "",
+    friendName: String = "",
     onMatchReady: (sessionId: String, isPlayer1: Boolean) -> Unit,
     onBack: () -> Unit,
     vm: FriendlyMatchViewModel = viewModel()
@@ -39,6 +42,11 @@ fun FriendlyMatchmakingScreen(
     LaunchedEffect(state.phase) {
         if (state.phase == FriendlyPhase.ACCEPTED) {
             onMatchReady(state.sessionId, state.isPlayer1)
+        }
+        // Preselected friend: fill the card (and auto-send the first invite) whenever
+        // the screen is back in the search phase.
+        if (friendUid.isNotEmpty() && state.phase == FriendlyPhase.SEARCH && state.foundUid.isEmpty()) {
+            vm.preselectFriend(friendUid, friendName)
         }
     }
 

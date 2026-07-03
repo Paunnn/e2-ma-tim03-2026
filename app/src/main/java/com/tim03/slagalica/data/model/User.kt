@@ -12,6 +12,10 @@ data class User(
     val avatarIndex: Int = 0,
     val weeklyStars: Int = 0,
     val monthlyStars: Int = 0,
+    // Non-friendly partije played in the current weekly/monthly cycle - a player is
+    // ranked as soon as this is > 0 (spec 4a), even if their star balance is 0 or negative.
+    val weeklyGamesPlayed: Int = 0,
+    val monthlyGamesPlayed: Int = 0,
     val fcmToken: String = "",
     // True from successful login until logout - "currently active" players are the
     // logged-in ones. (Named "loggedIn", not "isLoggedIn": Firestore's bean mapper

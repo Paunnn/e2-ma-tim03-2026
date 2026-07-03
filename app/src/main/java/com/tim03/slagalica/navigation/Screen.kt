@@ -24,7 +24,12 @@ sealed class Screen(val route: String) {
     object IzazovPartija : Screen("izazov_partija/{izazovId}") {
         fun createRoute(izazovId: String) = "izazov_partija/$izazovId"
     }
-    object FriendlyMatchmaking : Screen("friendly_matchmaking")
+    // Optional args: opened from the friends list they preselect the friend and the
+    // invite is sent immediately; opened without them (from Home) the user searches.
+    object FriendlyMatchmaking : Screen("friendly_matchmaking?friendUid={friendUid}&friendName={friendName}") {
+        fun createRoute(friendUid: String, friendName: String) =
+            "friendly_matchmaking?friendUid=$friendUid&friendName=${android.net.Uri.encode(friendName)}"
+    }
     object Region : Screen("region")
     object Friends : Screen("friends")
 }
